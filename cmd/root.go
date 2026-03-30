@@ -17,8 +17,7 @@ var rootCmd = &cobra.Command{
 	Short: "The SSM CLI that AWS should have built",
 	Long:  `ssmx makes AWS Systems Manager usable: interactive instance picker, smart target resolution, diagnostics, and more.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("ssmx: interactive picker coming soon")
-		return nil
+		return runConnect(cmd, args)
 	},
 }
 
