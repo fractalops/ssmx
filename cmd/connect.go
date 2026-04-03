@@ -22,11 +22,6 @@ func runExec(cmd *cobra.Command, target string, remoteCmd []string) error {
 	if len(remoteCmd) == 0 {
 		return fmt.Errorf("no command specified after --")
 	}
-	if flagTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, flagTimeout)
-		defer cancel()
-	}
 
 	if err := preflight.Run(ctx, flagProfile, flagRegion); err != nil {
 		return err
@@ -88,7 +83,15 @@ func runExec(cmd *cobra.Command, target string, remoteCmd []string) error {
 		inst.InstanceID,
 	)
 
-	return session.Exec(ctx, awsCfg, inst.InstanceID, region, profile, command)
+	// Apply timeout only to the plugin execution, not preflight/listing.
+	execCtx := ctx
+	if flagTimeout > 0 {
+		var cancel context.CancelFunc
+		execCtx, cancel = context.WithTimeout(ctx, flagTimeout)
+		defer cancel()
+	}
+
+	return session.Exec(execCtx, awsCfg, inst.InstanceID, region, profile, command)
 }
 
 func runConnect(cmd *cobra.Command, args []string) error {
@@ -205,13 +208,10 @@ func postSessionBookmark(inst *awsclient.Instance, cfg *config.Config) error {
 		defaultName = inst.InstanceID
 	}
 
-	fmt.Println()
-	fmt.Printf("%s  Bookmarked as %s\n", tui.StyleSuccess.Render("✓"), tui.StyleBold.Render(defaultName))
-
 	var rename string
 	err := huh.NewInput().
-		Title("Rename bookmark?").
-		Placeholder("enter to keep \"" + defaultName + "\"").
+		Title("Save this instance as a bookmark?").
+		Placeholder(defaultName).
 		Value(&rename).
 		Run()
 	if err != nil {
@@ -220,8 +220,16 @@ func postSessionBookmark(inst *awsclient.Instance, cfg *config.Config) error {
 		}
 		return err
 	}
-	if rename == "" {
-		return config.SetAlias(defaultName, inst.InstanceID)
+
+	name := defaultName
+	if rename != "" {
+		name = rename
 	}
-	return config.SetAlias(rename, inst.InstanceID)
+	if err := config.SetAlias(name, inst.InstanceID); err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Printf("%s  Bookmarked as %s\n", tui.StyleSuccess.Render("✓"), tui.StyleBold.Render(name))
+	return nil
 }

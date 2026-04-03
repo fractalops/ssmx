@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -73,7 +75,17 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() {
+	// Silence cobra's own error printing — we handle it below.
+	rootCmd.SilenceErrors = true
+	rootCmd.SilenceUsage = true
+
 	if err := rootCmd.Execute(); err != nil {
+		// Propagate the remote command's exit code directly so that
+		// ssmx is transparent to scripts (echo $? reflects the remote exit).
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			os.Exit(exitErr.ExitCode())
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
