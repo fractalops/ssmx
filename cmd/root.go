@@ -3,21 +3,72 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	flagProfile string
-	flagRegion  string
+	flagProfile     string
+	flagRegion      string
+	flagInteractive bool
+	flagTimeout     time.Duration
 )
 
+type rootAction int
+
+const (
+	actionHelp    rootAction = iota
+	actionPicker             // -i flag
+	actionConnect            // positional target, no remote cmd
+	actionExec               // positional target + -- cmd
+)
+
+type rootArgs struct {
+	action    rootAction
+	target    string
+	remoteCmd []string
+}
+
+// parseRootArgs determines what action to take given root command invocation.
+// dashAt is the index into args where -- appeared (-1 if absent), as returned
+// by cobra's ArgsLenAtDash().
+func parseRootArgs(interactive bool, args []string, dashAt int) rootArgs {
+	if interactive {
+		return rootArgs{action: actionPicker}
+	}
+	if len(args) == 0 || dashAt == 0 {
+		return rootArgs{action: actionHelp}
+	}
+	target := args[0]
+	if dashAt > 0 {
+		return rootArgs{action: actionExec, target: target, remoteCmd: args[dashAt:]}
+	}
+	return rootArgs{action: actionConnect, target: target}
+}
+
 var rootCmd = &cobra.Command{
-	Use:   "ssmx",
+	Use:   "ssmx [target] [-- command...]",
 	Short: "The SSM CLI that AWS should have built",
-	Long:  `ssmx makes AWS Systems Manager usable: interactive instance picker, smart target resolution, diagnostics, and more.`,
+	Long: `ssmx makes AWS Systems Manager usable: interactive instance picker, smart target resolution, diagnostics, and more.
+
+  ssmx -i                  interactive instance picker
+  ssmx web-prod            connect to an instance
+  ssmx web-prod -- df -h   run a one-shot command`,
+	Args:               cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runConnect(cmd, args)
+		parsed := parseRootArgs(flagInteractive, args, cmd.ArgsLenAtDash())
+		switch parsed.action {
+		case actionHelp:
+			return cmd.Help()
+		case actionPicker:
+			return runConnect(cmd, []string{})
+		case actionConnect:
+			return runConnect(cmd, []string{parsed.target})
+		case actionExec:
+			return runExec(cmd, parsed.target, parsed.remoteCmd)
+		}
+		return nil
 	},
 }
 
@@ -31,4 +82,6 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&flagProfile, "profile", "p", "", "AWS profile to use")
 	rootCmd.PersistentFlags().StringVarP(&flagRegion, "region", "r", "", "AWS region to use")
+	rootCmd.Flags().BoolVarP(&flagInteractive, "interactive", "i", false, "open interactive instance picker")
+	rootCmd.Flags().DurationVar(&flagTimeout, "timeout", 0, "timeout for one-shot exec (e.g. 30s, 2m); 0 means no timeout")
 }
