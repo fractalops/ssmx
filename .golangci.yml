@@ -1,0 +1,35 @@
+version: "2"
+run:
+  tests: false
+linters:
+  enable:
+    - bodyclose
+    - goconst
+    - godot
+    - gosec
+    - misspell
+    - nakedret
+    - nilerr
+    - noctx
+    - nolintlint
+    - prealloc
+    - revive
+    - unconvert
+    - unparam
+    - whitespace
+    - wrapcheck
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+    rules:
+      - linters: [wrapcheck]
+        path: "cmd/.*\\.go"
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - goimports
+  exclusions:
+    generated: lax

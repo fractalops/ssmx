@@ -1,1 +1,19 @@
+# Build output
 ssmx
+ssmx-*
+*.exe
+
+# Test & coverage
+coverage.out
+coverage.html
+
+# Go workspace
+vendor/
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp
