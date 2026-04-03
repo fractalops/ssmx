@@ -19,6 +19,9 @@ import (
 
 func runExec(cmd *cobra.Command, target string, remoteCmd []string) error {
 	ctx := context.Background()
+	if len(remoteCmd) == 0 {
+		return fmt.Errorf("no command specified after --")
+	}
 	if flagTimeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, flagTimeout)
@@ -206,14 +209,19 @@ func postSessionBookmark(inst *awsclient.Instance, cfg *config.Config) error {
 	fmt.Printf("%s  Bookmarked as %s\n", tui.StyleSuccess.Render("✓"), tui.StyleBold.Render(defaultName))
 
 	var rename string
-	if err := huh.NewInput().
+	err := huh.NewInput().
 		Title("Rename bookmark?").
 		Placeholder("enter to keep \"" + defaultName + "\"").
 		Value(&rename).
-		Run(); err != nil || rename == "" {
-		// Keep default name.
+		Run()
+	if err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			return nil
+		}
+		return err
+	}
+	if rename == "" {
 		return config.SetAlias(defaultName, inst.InstanceID)
 	}
-
 	return config.SetAlias(rename, inst.InstanceID)
 }
