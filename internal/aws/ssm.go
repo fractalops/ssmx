@@ -67,3 +67,14 @@ func StartSession(ctx context.Context, cfg aws.Config, instanceID string) (*ssm.
 		Target: aws.String(instanceID),
 	})
 }
+
+// StartInteractiveCommand starts an SSM session using AWS-StartInteractiveCommand,
+// which runs command on the target instance and streams output back through the plugin.
+func StartInteractiveCommand(ctx context.Context, cfg aws.Config, instanceID, command string) (*ssm.StartSessionOutput, error) {
+	client := ssm.NewFromConfig(cfg)
+	return client.StartSession(ctx, &ssm.StartSessionInput{
+		Target:       aws.String(instanceID),
+		DocumentName: aws.String("AWS-StartInteractiveCommand"),
+		Parameters:   map[string][]string{"command": {command}},
+	})
+}
