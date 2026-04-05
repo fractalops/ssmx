@@ -90,3 +90,13 @@ func SetAlias(name, instanceID string) error {
 	cfg.Aliases[name] = instanceID
 	return Save(cfg)
 }
+
+// RemoveAlias deletes an alias by name and saves.
+func RemoveAlias(name string) error {
+	cfg, err := Load()
+	if err != nil {
+		return err
+	}
+	delete(cfg.Aliases, name)
+	return Save(cfg)
+}

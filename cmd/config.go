@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"text/template"
 
 	"github.com/charmbracelet/huh"
@@ -18,20 +19,6 @@ var configCmd = &cobra.Command{
 	RunE:  runConfigInteractive,
 }
 
-var configAliasCmd = &cobra.Command{
-	Use:   "alias <name> <instance-id>",
-	Short: "Create or update an alias for an instance ID",
-	Args:  cobra.ExactArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		name, id := args[0], args[1]
-		if err := config.SetAlias(name, id); err != nil {
-			return err
-		}
-		fmt.Printf("%s  Alias %s → %s saved\n", tui.StyleSuccess.Render("ok"), tui.StyleBold.Render(name), id)
-		return nil
-	},
-}
-
 var configSSHGenCmd = &cobra.Command{
 	Use:   "ssh-gen",
 	Short: "Generate ~/.ssh/config.d/ssmx with ProxyCommand entries",
@@ -39,7 +26,6 @@ var configSSHGenCmd = &cobra.Command{
 }
 
 func init() {
-	configCmd.AddCommand(configAliasCmd)
 	configCmd.AddCommand(configSSHGenCmd)
 	rootCmd.AddCommand(configCmd)
 }
@@ -54,9 +40,9 @@ func runConfigInteractive(cmd *cobra.Command, args []string) error {
 	if err := huh.NewSelect[string]().
 		Title("ssmx config").
 		Options(
+			huh.NewOption("Manage bookmarks", "bookmarks"),
 			huh.NewOption("Set default profile", "profile"),
 			huh.NewOption("Set default region", "region"),
-			huh.NewOption("Add alias", "alias"),
 			huh.NewOption("Generate SSH config", "ssh"),
 			huh.NewOption("Show config path", "path"),
 		).
@@ -66,6 +52,9 @@ func runConfigInteractive(cmd *cobra.Command, args []string) error {
 	}
 
 	switch action {
+	case "bookmarks":
+		return runManageBookmarks(cfg)
+
 	case "profile":
 		if err := huh.NewInput().
 			Title("Default AWS profile").
@@ -85,18 +74,6 @@ func runConfigInteractive(cmd *cobra.Command, args []string) error {
 		}
 		return config.Save(cfg)
 
-	case "alias":
-		var name, id string
-		if err := huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().Title("Alias name").Value(&name),
-				huh.NewInput().Title("Instance ID").Value(&id),
-			),
-		).Run(); err != nil {
-			return nil
-		}
-		return config.SetAlias(name, id)
-
 	case "ssh":
 		return runSSHGen(cmd, args)
 
@@ -106,6 +83,79 @@ func runConfigInteractive(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		fmt.Println(filepath.Join(dir, "config.yaml"))
+	}
+	return nil
+}
+
+func runManageBookmarks(cfg *config.Config) error {
+	if len(cfg.Aliases) == 0 {
+		fmt.Println(tui.StyleDim.Render("  No bookmarks yet. They're saved automatically after connecting."))
+		return nil
+	}
+
+	// Build a select list of existing bookmarks.
+	type bookmark struct{ name, id string }
+	var bookmarks []bookmark
+	for name, id := range cfg.Aliases {
+		bookmarks = append(bookmarks, bookmark{name, id})
+	}
+
+	// Sort for stable display.
+	sort.Slice(bookmarks, func(i, j int) bool {
+		return bookmarks[i].name < bookmarks[j].name
+	})
+
+	opts := make([]huh.Option[string], 0, len(bookmarks))
+	for _, b := range bookmarks {
+		label := fmt.Sprintf("%-25s %s", b.name, tui.StyleDim.Render(b.id))
+		opts = append(opts, huh.NewOption(label, b.name))
+	}
+
+	var selected string
+	if err := huh.NewSelect[string]().
+		Title("Bookmarks — select to edit").
+		Options(opts...).
+		Value(&selected).
+		Run(); err != nil {
+		return nil
+	}
+
+	instanceID := cfg.Aliases[selected]
+
+	var action string
+	if err := huh.NewSelect[string]().
+		Title(selected + "  →  " + instanceID).
+		Options(
+			huh.NewOption("Rename", "rename"),
+			huh.NewOption("Remove", "remove"),
+		).
+		Value(&action).
+		Run(); err != nil {
+		return nil
+	}
+
+	switch action {
+	case "rename":
+		newName := selected
+		if err := huh.NewInput().
+			Title("New name").
+			Value(&newName).
+			Run(); err != nil || newName == "" || newName == selected {
+			return nil
+		}
+		if err := config.RemoveAlias(selected); err != nil {
+			return err
+		}
+		if err := config.SetAlias(newName, instanceID); err != nil {
+			return err
+		}
+		fmt.Printf("%s  Renamed %s → %s\n", tui.StyleSuccess.Render("ok"), tui.StyleBold.Render(selected), tui.StyleBold.Render(newName))
+
+	case "remove":
+		if err := config.RemoveAlias(selected); err != nil {
+			return err
+		}
+		fmt.Printf("%s  Removed bookmark %s\n", tui.StyleSuccess.Render("ok"), tui.StyleBold.Render(selected))
 	}
 	return nil
 }
