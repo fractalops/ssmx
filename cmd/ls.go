@@ -20,20 +20,13 @@ var (
 	lsFlagFormat    string
 )
 
-var lsCmd = &cobra.Command{
-	Use:   "ls",
-	Short: "List EC2 instances and their SSM health",
-	RunE:  runLS,
-}
-
 func init() {
-	lsCmd.Flags().StringArrayVar(&lsFlagTags, "tag", nil, "Filter by tag (e.g. --tag env=prod)")
-	lsCmd.Flags().BoolVar(&lsFlagUnhealthy, "unhealthy", false, "Show only instances with SSM issues")
-	lsCmd.Flags().StringVar(&lsFlagFormat, "format", "table", "Output format: table, json, tsv")
-	rootCmd.AddCommand(lsCmd)
+	rootCmd.Flags().StringArrayVar(&lsFlagTags, "tag", nil, "filter by tag (e.g. --tag env=prod); requires --list")
+	rootCmd.Flags().BoolVar(&lsFlagUnhealthy, "unhealthy", false, "show only SSM-unreachable instances; requires --list")
+	rootCmd.Flags().StringVar(&lsFlagFormat, "format", "table", "output format: table, json, tsv; requires --list")
 }
 
-func runLS(cmd *cobra.Command, args []string) error {
+func runList(cmd *cobra.Command) error {
 	ctx := context.Background()
 
 	cfg, err := awsclient.NewConfig(ctx, flagProfile, flagRegion)

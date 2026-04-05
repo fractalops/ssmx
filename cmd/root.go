@@ -14,16 +14,20 @@ var (
 	flagProfile     string
 	flagRegion      string
 	flagInteractive bool
+	flagList        bool
+	flagConfigure   bool
 	flagTimeout     time.Duration
 )
 
 type rootAction int
 
 const (
-	actionHelp    rootAction = iota
-	actionPicker             // -i flag
-	actionConnect            // positional target, no remote cmd
-	actionExec               // positional target + -- cmd
+	actionHelp      rootAction = iota
+	actionPicker               // -i flag
+	actionConnect              // positional target, no remote cmd
+	actionExec                 // positional target + -- cmd
+	actionList                 // -l / --list
+	actionConfigure            // --configure
 )
 
 type rootArgs struct {
@@ -35,7 +39,13 @@ type rootArgs struct {
 // parseRootArgs determines what action to take given root command invocation.
 // dashAt is the index into args where -- appeared (-1 if absent), as returned
 // by cobra's ArgsLenAtDash().
-func parseRootArgs(interactive bool, args []string, dashAt int) rootArgs {
+func parseRootArgs(interactive, list, configure bool, args []string, dashAt int) rootArgs {
+	if configure {
+		return rootArgs{action: actionConfigure}
+	}
+	if list {
+		return rootArgs{action: actionList}
+	}
 	if interactive {
 		return rootArgs{action: actionPicker}
 	}
@@ -56,10 +66,12 @@ var rootCmd = &cobra.Command{
 
   ssmx -i                  interactive instance picker
   ssmx web-prod            connect to an instance
-  ssmx web-prod -- df -h   run a one-shot command`,
+  ssmx web-prod -- df -h   run a one-shot command
+  ssmx -l                  list instances + SSM health
+  ssmx --configure         open settings menu`,
 	Args:               cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		parsed := parseRootArgs(flagInteractive, args, cmd.ArgsLenAtDash())
+		parsed := parseRootArgs(flagInteractive, flagList, flagConfigure, args, cmd.ArgsLenAtDash())
 		switch parsed.action {
 		case actionHelp:
 			return cmd.Help()
@@ -69,6 +81,10 @@ var rootCmd = &cobra.Command{
 			return runConnect(cmd, []string{parsed.target})
 		case actionExec:
 			return runExec(cmd, parsed.target, parsed.remoteCmd)
+		case actionList:
+			return runList(cmd)
+		case actionConfigure:
+			return runConfigInteractive()
 		}
 		return nil
 	},
@@ -105,5 +121,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&flagProfile, "profile", "p", "", "AWS profile to use")
 	rootCmd.PersistentFlags().StringVarP(&flagRegion, "region", "r", "", "AWS region to use")
 	rootCmd.Flags().BoolVarP(&flagInteractive, "interactive", "i", false, "open interactive instance picker")
+	rootCmd.Flags().BoolVarP(&flagList, "list", "l", false, "list instances and SSM health")
+	rootCmd.Flags().BoolVar(&flagConfigure, "configure", false, "open interactive settings menu")
 	rootCmd.Flags().DurationVar(&flagTimeout, "timeout", 0, "timeout for one-shot exec (e.g. 30s, 2m); 0 means no timeout")
 }
