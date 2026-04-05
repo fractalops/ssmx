@@ -2,8 +2,13 @@ package preflight
 
 import (
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 const pluginBinary = "session-manager-plugin"
@@ -27,17 +32,149 @@ func InstallPlugin() error {
 	}
 }
 
+// knownBrewBins are common locations where Homebrew places binaries.
+var knownBrewBins = []string{
+	"/opt/homebrew/bin", // Apple Silicon
+	"/usr/local/bin",    // Intel
+}
+
 func installDarwin() error {
-	if _, err := exec.LookPath("brew"); err == nil {
-		cmd := exec.Command("brew", "install", "session-manager-plugin")
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		if err := cmd.Run(); err != nil {
+	// If brew already downloaded the cask pkg, use it directly — no need to
+	// run brew again (which triggers a slow index update).
+	if pkg := findBrewCaskPkg(); pkg != "" {
+		return openPkgInstaller(pkg)
+	}
+
+	// Try brew to download the cask.
+	if brewPath, err := exec.LookPath("brew"); err == nil {
+		fmt.Print("  Using Homebrew... ")
+		cmd := exec.Command(brewPath, "install", "session-manager-plugin")
+		cmd.Env = append(os.Environ(), "HOMEBREW_NO_AUTO_UPDATE=1")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			fmt.Println()
+			os.Stderr.Write(out)
 			return fmt.Errorf("brew install session-manager-plugin: %w", err)
 		}
+		fmt.Println("done")
+		if ensurePluginOnPath() == nil {
+			return nil
+		}
+		if pkg := findBrewCaskPkg(); pkg != "" {
+			return openPkgInstaller(pkg)
+		}
+	}
+
+	// No brew — download the .pkg directly.
+	return installDarwinPkg()
+}
+
+// findBrewCaskPkg looks for a downloaded .pkg in the brew Caskroom.
+func findBrewCaskPkg() string {
+	caskroots := []string{"/opt/homebrew/Caskroom", "/usr/local/Caskroom"}
+	for _, base := range caskroots {
+		matches, _ := filepath.Glob(filepath.Join(base, "session-manager-plugin", "*", "*.pkg"))
+		if len(matches) > 0 {
+			return matches[0]
+		}
+	}
+	return ""
+}
+
+func installDarwinPkg() error {
+	pkgURL := "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/mac/session-manager-plugin.pkg"
+	if runtime.GOARCH == "arm64" {
+		pkgURL = "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/mac_arm64/session-manager-plugin.pkg"
+	}
+
+	tmpDir, err := os.MkdirTemp("", "ssmx-plugin-*")
+	if err != nil {
+		return fmt.Errorf("creating temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	pkgPath := filepath.Join(tmpDir, "session-manager-plugin.pkg")
+	fmt.Print("  Downloading session-manager-plugin.pkg... ")
+	if err := downloadFile(pkgURL, pkgPath); err != nil {
+		return fmt.Errorf("download failed: %w", err)
+	}
+	fmt.Println("done")
+
+	return openPkgInstaller(pkgPath)
+}
+
+// openPkgInstaller installs a .pkg silently via osascript, which shows a
+// single macOS auth dialog and runs installer headlessly.
+func openPkgInstaller(pkgPath string) error {
+	const (
+		pluginBin  = "/usr/local/sessionmanagerplugin/bin/session-manager-plugin"
+		pluginLink = "/usr/local/bin/session-manager-plugin"
+	)
+
+	// Remove quarantine so Gatekeeper doesn't block the pkg.
+	_ = exec.Command("xattr", "-d", "com.apple.quarantine", pkgPath).Run()
+
+	fmt.Println()
+	fmt.Println("  session-manager-plugin is an AWS tool ssmx uses to open secure")
+	fmt.Println("  sessions to your EC2 instances. You'll be prompted to allow it.")
+	fmt.Println()
+
+	script := fmt.Sprintf(
+		`do shell script "installer -pkg %s -target / && ln -sf %s %s" with administrator privileges`,
+		pkgPath, pluginBin, pluginLink,
+	)
+	cmd := exec.Command("osascript", "-e", script)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		if strings.Contains(string(out), "User cancelled") {
+			return fmt.Errorf("installation cancelled")
+		}
+		return fmt.Errorf("install failed: %s", strings.TrimSpace(string(out)))
+	}
+
+	_ = ensurePluginOnPath()
+	return nil
+}
+
+// ensurePluginOnPath checks if session-manager-plugin is findable; if not,
+// it searches known locations and prepends the first match to PATH.
+func ensurePluginOnPath() error {
+	if _, err := exec.LookPath(pluginBinary); err == nil {
 		return nil
 	}
-	return fmt.Errorf("homebrew not found — install manually: https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html")
+	for _, dir := range knownBrewBins {
+		candidate := filepath.Join(dir, pluginBinary)
+		if _, err := os.Stat(candidate); err == nil {
+			current := os.Getenv("PATH")
+			if current != "" {
+				os.Setenv("PATH", dir+":"+current)
+			} else {
+				os.Setenv("PATH", dir)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("session-manager-plugin installed but not found in PATH or known locations — open a new terminal and try again")
+}
+
+func downloadFile(url, dest string) error {
+	resp, err := http.Get(url) //nolint:gosec // URL is a hardcoded AWS S3 path
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	f, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = io.Copy(f, resp.Body)
+	return err
 }
 
 func installLinux() error {
