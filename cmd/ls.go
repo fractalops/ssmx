@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 	awsclient "github.com/fractalops/ssmx/internal/aws"
 	"github.com/fractalops/ssmx/internal/state"
@@ -123,26 +124,34 @@ func printInstances(instances []awsclient.Instance, format string) error {
 		}
 		return nil
 	default:
-		fmt.Printf("%s\n", tui.StyleHeader.Render(fmt.Sprintf(
-			"  %-30s %-21s %-9s %-8s %-15s %-12s",
-			"NAME", "INSTANCE ID", "STATE", "SSM", "PRIVATE IP", "AGENT",
-		)))
+		col := func(s string, w int) string {
+			return lipgloss.NewStyle().Width(w).Render(s)
+		}
+		header := "  " +
+			col("NAME", 30) + " " +
+			col("INSTANCE ID", 21) + " " +
+			col("STATE", 9) + " " +
+			col("SSM", 6) + " " +
+			col("PRIVATE IP", 15) + " " +
+			col("AGENT", 12)
+		fmt.Println(tui.StyleHeader.Render(header))
 		for _, inst := range instances {
-			name := inst.Name
-			if name == "" {
-				name = tui.StyleDim.Render("(no name)")
+			nameText := inst.Name
+			if nameText == "" {
+				nameText = tui.StyleDim.Render("(no name)")
+			} else {
+				nameText = truncateName(nameText, 30)
 			}
-			ssmGlyph := tui.SSMStatusGlyph(inst.SSMStatus)
-			ssmStyled := tui.SSMStatusStyle(inst.SSMStatus).Render(ssmGlyph)
+			ssmCell := tui.SSMStatusStyle(inst.SSMStatus).Render(tui.SSMStatusGlyph(inst.SSMStatus))
 
-			fmt.Printf("  %-30s %-21s %-9s %-8s %-15s %-12s\n",
-				truncateName(name, 30),
-				inst.InstanceID,
-				inst.State,
-				ssmStyled,
-				inst.PrivateIP,
-				inst.AgentVersion,
-			)
+			row := "  " +
+				col(nameText, 30) + " " +
+				col(inst.InstanceID, 21) + " " +
+				col(inst.State, 9) + " " +
+				col(ssmCell, 6) + " " +
+				col(inst.PrivateIP, 15) + " " +
+				col(inst.AgentVersion, 12)
+			fmt.Println(row)
 		}
 		fmt.Printf("\n%s\n", tui.StyleDim.Render(fmt.Sprintf("  %d instances", len(instances))))
 		return nil

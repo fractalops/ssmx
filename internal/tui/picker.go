@@ -121,10 +121,13 @@ func (m PickerModel) View() string {
 
 	sb.WriteString(StyleHeader.Render(" ssmx — select an instance") + "\n\n")
 	sb.WriteString(" " + m.search.View() + "\n\n")
-	sb.WriteString(StyleDim.Render(fmt.Sprintf(
-		"  %-30s %-21s %-9s %-8s %-15s\n",
-		"NAME", "INSTANCE ID", "STATE", "SSM", "PRIVATE IP",
-	)))
+	header := "  " +
+		lipgloss.NewStyle().Width(30).Render("NAME") + " " +
+		lipgloss.NewStyle().Width(21).Render("INSTANCE ID") + " " +
+		lipgloss.NewStyle().Width(9).Render("STATE") + " " +
+		lipgloss.NewStyle().Width(6).Render("SSM") + " " +
+		lipgloss.NewStyle().Width(15).Render("PRIVATE IP")
+	sb.WriteString(StyleDim.Render(header) + "\n")
 
 	maxRows := m.height - 8
 	if maxRows < 1 {
@@ -141,21 +144,22 @@ func (m PickerModel) View() string {
 
 	for i := start; i < end; i++ {
 		inst := m.filtered[i]
-		ssmGlyph := SSMStatusGlyph(inst.SSMStatus)
-		ssmStyled := SSMStatusStyle(inst.SSMStatus).Render(ssmGlyph)
 
-		name := inst.Name
-		if name == "" {
-			name = StyleDim.Render("(no name)")
+		// Build each cell using lipgloss width so ANSI codes don't break padding.
+		nameText := inst.Name
+		if nameText == "" {
+			nameText = StyleDim.Render("(no name)")
+		} else {
+			nameText = truncate(nameText, 30)
 		}
+		nameCell := lipgloss.NewStyle().Width(30).Render(nameText)
 
-		row := fmt.Sprintf("  %-30s %-21s %-9s %-8s %-15s",
-			truncate(name, 30),
-			inst.InstanceID,
-			inst.State,
-			ssmStyled,
-			inst.PrivateIP,
-		)
+		idCell    := lipgloss.NewStyle().Width(21).Render(inst.InstanceID)
+		stateCell := lipgloss.NewStyle().Width(9).Render(inst.State)
+		ssmCell   := lipgloss.NewStyle().Width(6).Render(SSMStatusStyle(inst.SSMStatus).Render(SSMStatusGlyph(inst.SSMStatus)))
+		ipCell    := lipgloss.NewStyle().Width(15).Render(inst.PrivateIP)
+
+		row := "  " + nameCell + " " + idCell + " " + stateCell + " " + ssmCell + " " + ipCell
 
 		if i == m.cursor {
 			row = StyleSelected.Render(row)
