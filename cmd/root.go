@@ -74,7 +74,12 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-func Execute() {
+func Execute(version, buildTime string) {
+	rootCmd.Version = version
+	if buildTime != "" {
+		rootCmd.SetVersionTemplate("ssmx " + version + " (built " + buildTime + ")\n")
+	}
+
 	// Silence cobra's own error printing — we handle it below.
 	rootCmd.SilenceErrors = true
 	rootCmd.SilenceUsage = true
@@ -85,6 +90,11 @@ func Execute() {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			os.Exit(exitErr.ExitCode())
+		}
+		// errOffline already printed a user-facing message; just exit non-zero.
+		var offline *errOffline
+		if errors.As(err, &offline) {
+			os.Exit(1)
 		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

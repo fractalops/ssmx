@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 	awsclient "github.com/fractalops/ssmx/internal/aws"
 	"github.com/fractalops/ssmx/internal/config"
 	"github.com/fractalops/ssmx/internal/preflight"
@@ -16,6 +18,13 @@ import (
 	"github.com/fractalops/ssmx/internal/session"
 	"github.com/fractalops/ssmx/internal/tui"
 )
+
+// errOffline is returned when the target instance is not reachable via SSM.
+type errOffline struct{ inst *awsclient.Instance }
+
+func (e *errOffline) Error() string {
+	return fmt.Sprintf("%s (%s) is not reachable via SSM", e.inst.Name, e.inst.InstanceID)
+}
 
 func runExec(cmd *cobra.Command, target string, remoteCmd []string) error {
 	ctx := context.Background()
@@ -42,37 +51,20 @@ func runExec(cmd *cobra.Command, target string, remoteCmd []string) error {
 		return err
 	}
 
-	instances, err := awsclient.ListInstances(ctx, awsCfg, nil)
+	inst, err := resolveTarget(ctx, cmd, awsCfg, cfg, target)
 	if err != nil {
-		return fmt.Errorf("listing instances: %w", err)
+		return err
 	}
-	ssmInfo, _ := awsclient.ListManagedInstances(ctx, awsCfg)
-	awsclient.MergeSSMInfo(instances, ssmInfo)
-
-	inst, err := resolver.Resolve(target, instances, cfg.Aliases)
-	if err != nil {
-		var ambig *resolver.ErrAmbiguous
-		if errors.As(err, &ambig) {
-			fmt.Fprintf(cmd.ErrOrStderr(), "%q is ambiguous (%d matches) — select one:\n", target, len(ambig.Matches))
-			inst, err = tui.RunPicker(ambig.Matches)
-			if err != nil {
-				return err
-			}
-			if inst == nil {
-				return nil
-			}
-		} else {
-			return err
-		}
+	if inst == nil {
+		return nil // user cancelled picker
 	}
 
 	if inst.SSMStatus == "offline" {
-		fmt.Printf("%s  %s (%s) is not reachable via SSM (status: %s)\n",
-			tui.StyleWarning.Render("!"),
-			inst.Name, inst.InstanceID, inst.SSMStatus,
+		fmt.Fprintf(os.Stderr, "%s  %s (%s) is not reachable via SSM\n",
+			tui.StyleWarning.Render("!"), inst.Name, inst.InstanceID,
 		)
-		fmt.Printf("  Run %s to investigate\n", tui.StyleBold.Render("ssmx diagnose "+inst.InstanceID))
-		return nil
+		fmt.Fprintf(os.Stderr, "  Run %s to investigate\n", tui.StyleBold.Render("ssmx diagnose "+inst.InstanceID))
+		return &errOffline{inst}
 	}
 
 	command := strings.Join(remoteCmd, " ")
@@ -127,38 +119,21 @@ func runConnect(cmd *cobra.Command, args []string) error {
 			return nil // user cancelled
 		}
 	} else {
-		instances, err := awsclient.ListInstances(ctx, awsCfg, nil)
+		target, err = resolveTarget(ctx, cmd, awsCfg, cfg, args[0])
 		if err != nil {
-			return fmt.Errorf("listing instances: %w", err)
+			return err
 		}
-		ssmInfo, _ := awsclient.ListManagedInstances(ctx, awsCfg)
-		awsclient.MergeSSMInfo(instances, ssmInfo)
-
-		target, err = resolver.Resolve(args[0], instances, cfg.Aliases)
-		if err != nil {
-			var ambig *resolver.ErrAmbiguous
-			if errors.As(err, &ambig) {
-				fmt.Fprintf(cmd.ErrOrStderr(), "%q is ambiguous (%d matches) — select one:\n", args[0], len(ambig.Matches))
-				target, err = tui.RunPicker(ambig.Matches)
-				if err != nil {
-					return err
-				}
-				if target == nil {
-					return nil
-				}
-			} else {
-				return err
-			}
+		if target == nil {
+			return nil // user cancelled picker
 		}
 	}
 
 	if target.SSMStatus == "offline" {
-		fmt.Printf("%s  %s (%s) is not reachable via SSM (status: %s)\n",
-			tui.StyleWarning.Render("!"),
-			target.Name, target.InstanceID, target.SSMStatus,
+		fmt.Fprintf(os.Stderr, "%s  %s (%s) is not reachable via SSM\n",
+			tui.StyleWarning.Render("!"), target.Name, target.InstanceID,
 		)
-		fmt.Printf("  Run %s to investigate\n", tui.StyleBold.Render("ssmx diagnose "+target.InstanceID))
-		return nil
+		fmt.Fprintf(os.Stderr, "  Run %s to investigate\n", tui.StyleBold.Render("ssmx diagnose "+target.InstanceID))
+		return &errOffline{target}
 	}
 
 	fmt.Printf("%s  Connecting to %s (%s)...\n",
@@ -167,11 +142,48 @@ func runConnect(cmd *cobra.Command, args []string) error {
 		target.InstanceID,
 	)
 
-	if err := session.Connect(ctx, awsCfg, target.InstanceID, region, profile); err != nil {
-		return err
+	// Save terminal state before handing off to session-manager-plugin, which
+	// puts the terminal in raw mode. Restore it before showing the bookmark
+	// prompt so huh doesn't get garbled input.
+	termFd := int(os.Stdin.Fd())
+	oldState, err := term.GetState(termFd)
+	if err != nil {
+		oldState = nil
+	}
+
+	sessionErr := session.Connect(ctx, awsCfg, target.InstanceID, region, profile)
+
+	if oldState != nil {
+		_ = term.Restore(termFd, oldState)
+	}
+
+	if sessionErr != nil {
+		return sessionErr
 	}
 
 	return postSessionBookmark(target, cfg)
+}
+
+// resolveTarget lists instances, resolves target string, and opens a picker on
+// ambiguity. Returns nil, nil if the user cancels the picker.
+func resolveTarget(ctx context.Context, cmd *cobra.Command, awsCfg aws.Config, cfg *config.Config, target string) (*awsclient.Instance, error) {
+	instances, err := awsclient.ListInstances(ctx, awsCfg, nil)
+	if err != nil {
+		return nil, fmt.Errorf("listing instances: %w", err)
+	}
+	ssmInfo, _ := awsclient.ListManagedInstances(ctx, awsCfg)
+	awsclient.MergeSSMInfo(instances, ssmInfo)
+
+	inst, err := resolver.Resolve(target, instances, cfg.Aliases)
+	if err != nil {
+		var ambig *resolver.ErrAmbiguous
+		if errors.As(err, &ambig) {
+			fmt.Fprintf(cmd.ErrOrStderr(), "%q is ambiguous (%d matches) — select one:\n", target, len(ambig.Matches))
+			return tui.RunPicker(ambig.Matches)
+		}
+		return nil, err
+	}
+	return inst, nil
 }
 
 func pickInstance(ctx context.Context, cfg aws.Config) (*awsclient.Instance, error) {
@@ -202,7 +214,6 @@ func postSessionBookmark(inst *awsclient.Instance, cfg *config.Config) error {
 		}
 	}
 
-	// Auto-save with the Name tag (or instance ID if unnamed) as the key.
 	defaultName := inst.Name
 	if defaultName == "" {
 		defaultName = inst.InstanceID
