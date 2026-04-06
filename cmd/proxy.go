@@ -3,21 +3,24 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 
+	awssdk "github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	awsclient "github.com/fractalops/ssmx/internal/aws"
 	"github.com/fractalops/ssmx/internal/config"
 	"github.com/fractalops/ssmx/internal/preflight"
 	"github.com/fractalops/ssmx/internal/session"
+	"github.com/fractalops/ssmx/internal/state"
 	sshpkg "github.com/fractalops/ssmx/internal/ssh"
 )
 
 // runProxy is the backend for the --proxy ProxyCommand.
-// It injects an ephemeral SSH key then opens AWS-StartSSHSession,
-// piping stdin/stdout as the SSH transport.
+// It sends an ephemeral SSH public key via EC2 Instance Connect,
+// then opens AWS-StartSSHSession, piping stdin/stdout as the SSH transport.
 //
 // instanceID and user come from the ProxyCommand's %h and %r substitutions:
-//   ProxyCommand ssmx --proxy %h %r
+//
+//	ProxyCommand ssmx --proxy %h %r
 func runProxy(instanceID, user string) error {
 	ctx := context.Background()
 
@@ -42,34 +45,84 @@ func runProxy(instanceID, user string) error {
 
 	// Resolve SSH user: explicit from ProxyCommand %r, or guess from PlatformName.
 	if user == "" {
-		// Look up PlatformName from instance list.
-		instances, err := awsclient.ListInstances(ctx, awsCfg, nil)
-		if err == nil {
-			ssmInfo, _ := awsclient.ListManagedInstances(ctx, awsCfg)
-			awsclient.MergeSSMInfo(instances, ssmInfo)
-			for _, inst := range instances {
-				if inst.InstanceID == instanceID {
-					user = sshpkg.DefaultSSHUser(inst.PlatformName)
-					break
-				}
-			}
-		}
-		if user == "" {
-			user = "ec2-user" // safe fallback
-		}
+		user = resolveSSHUser(ctx, awsCfg, instanceID, profile, region)
 	}
 
-	// Load or generate the SSH key to inject.
+	// Load or generate the SSH key.
 	pubKey, _, err := sshpkg.LoadOrGenerateKey(cfg.SSHKeyPath)
 	if err != nil {
 		return fmt.Errorf("loading SSH key: %w", err)
 	}
 
-	// Inject key — runs Python script on instance via send-command.
-	if err := sshpkg.InjectKey(ctx, awsCfg, instanceID, user, pubKey); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: key injection failed: %v\n", err)
-		// Don't abort — SSH will fail with an auth error which is clearer.
+	// Get the instance's availability zone — required by SendSSHPublicKey.
+	az, err := resolveAZ(ctx, awsCfg, instanceID, profile, region)
+	if err != nil {
+		return fmt.Errorf("resolving availability zone: %w", err)
+	}
+
+	// Push the public key via EC2 Instance Connect (60-second TTL).
+	if err := awsclient.SendSSHPublicKey(ctx, awsCfg, instanceID, az, user, pubKey); err != nil {
+		return fmt.Errorf("sending SSH public key: %w", err)
 	}
 
 	return session.SSHProxy(ctx, awsCfg, instanceID, region, profile)
+}
+
+// resolveSSHUser looks up the PlatformName for instanceID (cache first, then
+// live API) and returns the default SSH user for that platform.
+func resolveSSHUser(ctx context.Context, awsCfg awssdk.Config, instanceID, profile, region string) string {
+	// Try the cache first.
+	if db, err := state.Open(); err == nil {
+		defer db.Close()
+		if cached, err := state.GetCachedInstances(db, profile, region); err == nil {
+			for _, c := range cached {
+				if c.InstanceID == instanceID {
+					return sshpkg.DefaultSSHUser(c.PlatformName)
+				}
+			}
+		}
+	}
+	// Fall back to live instance list.
+	if instances, err := awsclient.ListInstances(ctx, awsCfg, nil); err == nil {
+		ssmInfo, _ := awsclient.ListManagedInstances(ctx, awsCfg)
+		awsclient.MergeSSMInfo(instances, ssmInfo)
+		for _, inst := range instances {
+			if inst.InstanceID == instanceID {
+				return sshpkg.DefaultSSHUser(inst.PlatformName)
+			}
+		}
+	}
+	return "ec2-user" // safe fallback
+}
+
+// resolveAZ returns the availability zone for instanceID. Checks the SQLite
+// cache first; falls back to DescribeInstances if not found or AZ is empty.
+func resolveAZ(ctx context.Context, awsCfg awssdk.Config, instanceID, profile, region string) (string, error) {
+	// Try the cache first.
+	if db, err := state.Open(); err == nil {
+		defer db.Close()
+		if cached, err := state.GetCachedInstances(db, profile, region); err == nil {
+			for _, c := range cached {
+				if c.InstanceID == instanceID && c.AvailabilityZone != "" {
+					return c.AvailabilityZone, nil
+				}
+			}
+		}
+	}
+	// Fall back to DescribeInstances.
+	client := ec2.NewFromConfig(awsCfg)
+	out, err := client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+		InstanceIds: []string{instanceID},
+	})
+	if err != nil {
+		return "", fmt.Errorf("describe-instances: %w", err)
+	}
+	for _, r := range out.Reservations {
+		for _, i := range r.Instances {
+			if i.Placement != nil && i.Placement.AvailabilityZone != nil {
+				return awssdk.ToString(i.Placement.AvailabilityZone), nil
+			}
+		}
+	}
+	return "", fmt.Errorf("availability zone not found for instance %s", instanceID)
 }
