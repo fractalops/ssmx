@@ -17,8 +17,9 @@ type CachedInstance struct {
 	AgentVersion string
 	Region       string
 	Profile      string
-	PlatformName string
-	CachedAt     time.Time
+	PlatformName     string
+	AvailabilityZone string
+	CachedAt         time.Time
 }
 
 // GetCachedInstances returns all cached instances for the given profile+region
@@ -27,7 +28,7 @@ func GetCachedInstances(db *sql.DB, profile, region string) ([]CachedInstance, e
 	cutoff := time.Now().Add(-cacheTTL).Unix()
 	rows, err := db.Query(`
 		SELECT instance_id, name, state, ssm_status, private_ip, agent_version,
-		       region, profile, cached_at, platform_name
+		       region, profile, cached_at, platform_name, availability_zone
 		FROM instance_cache
 		WHERE profile = ? AND region = ? AND cached_at >= ?
 		ORDER BY name ASC
@@ -44,7 +45,7 @@ func GetCachedInstances(db *sql.DB, profile, region string) ([]CachedInstance, e
 		if err := rows.Scan(
 			&inst.InstanceID, &inst.Name, &inst.State, &inst.SSMStatus,
 			&inst.PrivateIP, &inst.AgentVersion, &inst.Region, &inst.Profile,
-			&cachedAtUnix, &inst.PlatformName,
+			&cachedAtUnix, &inst.PlatformName, &inst.AvailabilityZone,
 		); err != nil {
 			return nil, err
 		}
@@ -65,13 +66,13 @@ func UpsertInstances(db *sql.DB, instances []CachedInstance) error {
 	stmt, err := tx.Prepare(`
 		INSERT INTO instance_cache
 			(instance_id, name, state, ssm_status, private_ip, agent_version,
-			 region, profile, cached_at, platform_name)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 region, profile, cached_at, platform_name, availability_zone)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(instance_id) DO UPDATE SET
 			name=excluded.name, state=excluded.state, ssm_status=excluded.ssm_status,
 			private_ip=excluded.private_ip, agent_version=excluded.agent_version,
 			region=excluded.region, profile=excluded.profile, cached_at=excluded.cached_at,
-			platform_name=excluded.platform_name
+			platform_name=excluded.platform_name, availability_zone=excluded.availability_zone
 	`)
 	if err != nil {
 		return err
@@ -83,7 +84,7 @@ func UpsertInstances(db *sql.DB, instances []CachedInstance) error {
 		if _, err := stmt.Exec(
 			inst.InstanceID, inst.Name, inst.State, inst.SSMStatus,
 			inst.PrivateIP, inst.AgentVersion, inst.Region, inst.Profile,
-			now, inst.PlatformName,
+			now, inst.PlatformName, inst.AvailabilityZone,
 		); err != nil {
 			return err
 		}

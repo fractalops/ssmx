@@ -52,13 +52,14 @@ func runList(cmd *cobra.Command) error {
 	if err == nil && len(cached) > 0 {
 		for _, c := range cached {
 			instances = append(instances, awsclient.Instance{
-				InstanceID:   c.InstanceID,
-				Name:         c.Name,
-				State:        c.State,
-				SSMStatus:    c.SSMStatus,
-				PrivateIP:    c.PrivateIP,
-				AgentVersion: c.AgentVersion,
-				PlatformName: c.PlatformName,
+				InstanceID:       c.InstanceID,
+				Name:             c.Name,
+				State:            c.State,
+				SSMStatus:        c.SSMStatus,
+				PrivateIP:        c.PrivateIP,
+				AgentVersion:     c.AgentVersion,
+				PlatformName:     c.PlatformName,
+				AvailabilityZone: c.AvailabilityZone,
 			})
 		}
 	} else {
@@ -77,15 +78,16 @@ func runList(cmd *cobra.Command) error {
 		var toCache []state.CachedInstance
 		for _, inst := range instances {
 			toCache = append(toCache, state.CachedInstance{
-				InstanceID:   inst.InstanceID,
-				Name:         inst.Name,
-				State:        inst.State,
-				SSMStatus:    inst.SSMStatus,
-				PrivateIP:    inst.PrivateIP,
-				AgentVersion: inst.AgentVersion,
-				Region:       region,
-				Profile:      profile,
-				PlatformName: inst.PlatformName,
+				InstanceID:       inst.InstanceID,
+				Name:             inst.Name,
+				State:            inst.State,
+				SSMStatus:        inst.SSMStatus,
+				PrivateIP:        inst.PrivateIP,
+				AgentVersion:     inst.AgentVersion,
+				Region:           region,
+				Profile:          profile,
+				PlatformName:     inst.PlatformName,
+				AvailabilityZone: inst.AvailabilityZone,
 			})
 		}
 		_ = state.UpsertInstances(db, toCache)

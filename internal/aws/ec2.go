@@ -23,7 +23,8 @@ type Instance struct {
 	SSMStatus     string
 	AgentVersion  string
 	LastPingAt    string
-	PlatformName  string // e.g. "Amazon Linux", "Ubuntu" — from SSM DescribeInstanceInformation
+	PlatformName     string // e.g. "Amazon Linux", "Ubuntu" — from SSM DescribeInstanceInformation
+	AvailabilityZone string // e.g. "us-east-1a" — from EC2 Placement.AvailabilityZone
 }
 
 // ListInstances returns all EC2 instances visible to the caller, optionally
@@ -61,6 +62,9 @@ func ListInstances(ctx context.Context, cfg aws.Config, tagFilters []string) ([]
 					inst.IAMProfileARN = aws.ToString(i.IamInstanceProfile.Arn)
 				}
 				inst.Name = tagValue(i.Tags, "Name")
+				if i.Placement != nil {
+					inst.AvailabilityZone = aws.ToString(i.Placement.AvailabilityZone)
+				}
 				instances = append(instances, inst)
 			}
 		}

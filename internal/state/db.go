@@ -45,8 +45,9 @@ func migrate(db *sql.DB) error {
 			agent_version TEXT NOT NULL DEFAULT '',
 			region        TEXT NOT NULL DEFAULT '',
 			profile       TEXT NOT NULL DEFAULT '',
-			cached_at     INTEGER NOT NULL,
-			platform_name TEXT NOT NULL DEFAULT ''
+			cached_at         INTEGER NOT NULL,
+			platform_name     TEXT NOT NULL DEFAULT '',
+			availability_zone TEXT NOT NULL DEFAULT ''
 		);
 
 		CREATE TABLE IF NOT EXISTS session_history (
@@ -72,7 +73,10 @@ func migrate(db *sql.DB) error {
 		return err
 	}
 	// Add platform_name to existing installations that predate this column.
-	return addColumnIfMissing(db, "instance_cache", "platform_name", "TEXT NOT NULL DEFAULT ''")
+	if err := addColumnIfMissing(db, "instance_cache", "platform_name", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	return addColumnIfMissing(db, "instance_cache", "availability_zone", "TEXT NOT NULL DEFAULT ''")
 }
 
 func addColumnIfMissing(db *sql.DB, table, column, def string) error {
