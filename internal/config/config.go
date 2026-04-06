@@ -68,6 +68,7 @@ func Save(cfg *Config) error {
 
 	v.Set("default_profile", cfg.DefaultProfile)
 	v.Set("default_region", cfg.DefaultRegion)
+	v.Set("ssh_key_path", cfg.SSHKeyPath)
 	v.Set("aliases", cfg.Aliases)
 	v.Set("doc_aliases", cfg.DocAliases)
 
@@ -98,5 +99,15 @@ func RemoveAlias(name string) error {
 		return err
 	}
 	delete(cfg.Aliases, name)
+	return Save(cfg)
+}
+
+// SetSSHKeyPath stores the SSH key path used by the proxy and saves.
+func SetSSHKeyPath(path string) error {
+	cfg, err := Load()
+	if err != nil {
+		return err
+	}
+	cfg.SSHKeyPath = path
 	return Save(cfg)
 }
