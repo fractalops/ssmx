@@ -6,6 +6,8 @@ import (
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	awsclient "github.com/fractalops/ssmx/internal/aws"
 	"github.com/fractalops/ssmx/internal/config"
 	"github.com/fractalops/ssmx/internal/preflight"
@@ -73,24 +75,23 @@ func runProxy(instanceID, user string) error {
 func resolveSSHUser(ctx context.Context, awsCfg awssdk.Config, instanceID, profile, region string) string {
 	// Try the cache first.
 	if db, err := state.Open(); err == nil {
-		defer db.Close()
-		if cached, err := state.GetCachedInstances(db, profile, region); err == nil {
-			for _, c := range cached {
-				if c.InstanceID == instanceID {
-					return sshpkg.DefaultSSHUser(c.PlatformName)
-				}
+		cached, _ := state.GetCachedInstances(db, profile, region)
+		db.Close()
+		for _, c := range cached {
+			if c.InstanceID == instanceID {
+				return sshpkg.DefaultSSHUser(c.PlatformName)
 			}
 		}
 	}
-	// Fall back to live instance list.
-	if instances, err := awsclient.ListInstances(ctx, awsCfg, nil); err == nil {
-		ssmInfo, _ := awsclient.ListManagedInstances(ctx, awsCfg)
-		awsclient.MergeSSMInfo(instances, ssmInfo)
-		for _, inst := range instances {
-			if inst.InstanceID == instanceID {
-				return sshpkg.DefaultSSHUser(inst.PlatformName)
-			}
-		}
+	// Fall back to a targeted SSM DescribeInstanceInformation call.
+	ssmClient := ssm.NewFromConfig(awsCfg)
+	out, err := ssmClient.DescribeInstanceInformation(ctx, &ssm.DescribeInstanceInformationInput{
+		Filters: []ssmtypes.InstanceInformationStringFilter{
+			{Key: awssdk.String("InstanceIds"), Values: []string{instanceID}},
+		},
+	})
+	if err == nil && len(out.InstanceInformationList) > 0 {
+		return sshpkg.DefaultSSHUser(awssdk.ToString(out.InstanceInformationList[0].PlatformName))
 	}
 	return "ec2-user" // safe fallback
 }
@@ -100,12 +101,11 @@ func resolveSSHUser(ctx context.Context, awsCfg awssdk.Config, instanceID, profi
 func resolveAZ(ctx context.Context, awsCfg awssdk.Config, instanceID, profile, region string) (string, error) {
 	// Try the cache first.
 	if db, err := state.Open(); err == nil {
-		defer db.Close()
-		if cached, err := state.GetCachedInstances(db, profile, region); err == nil {
-			for _, c := range cached {
-				if c.InstanceID == instanceID && c.AvailabilityZone != "" {
-					return c.AvailabilityZone, nil
-				}
+		cached, _ := state.GetCachedInstances(db, profile, region)
+		db.Close()
+		for _, c := range cached {
+			if c.InstanceID == instanceID && c.AvailabilityZone != "" {
+				return c.AvailabilityZone, nil
 			}
 		}
 	}
