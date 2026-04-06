@@ -152,6 +152,7 @@ Host {{.Name}}
     User ec2-user
     IdentityFile {{$.KeyPath}}
     ProxyCommand ssmx --proxy %h %r
+    StrictHostKeyChecking accept-new
 {{end}}
 # Catch-all for raw instance IDs.
 Host i-* mi-*
