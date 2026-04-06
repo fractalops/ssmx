@@ -106,6 +106,11 @@ func PollCommandInvocation(ctx context.Context, cfg aws.Config, instanceID, comm
 	client := ssm.NewFromConfig(cfg)
 	deadline := time.Now().Add(timeout)
 	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("timed out waiting for command %s", commandID)
 		}
