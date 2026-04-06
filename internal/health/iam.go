@@ -49,7 +49,7 @@ func SimulatePolicy(ctx context.Context, cfg aws.Config, sourceARN string, actio
 		ResourceArns:    []string{"*"},
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("iam:SimulatePrincipalPolicy: %w", err)
 	}
 	result := make(map[string]bool, len(out.EvaluationResults))
 	for _, r := range out.EvaluationResults {
