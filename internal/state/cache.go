@@ -17,6 +17,7 @@ type CachedInstance struct {
 	AgentVersion string
 	Region       string
 	Profile      string
+	PlatformName string
 	CachedAt     time.Time
 }
 
@@ -25,7 +26,8 @@ type CachedInstance struct {
 func GetCachedInstances(db *sql.DB, profile, region string) ([]CachedInstance, error) {
 	cutoff := time.Now().Add(-cacheTTL).Unix()
 	rows, err := db.Query(`
-		SELECT instance_id, name, state, ssm_status, private_ip, agent_version, region, profile, cached_at
+		SELECT instance_id, name, state, ssm_status, private_ip, agent_version,
+		       region, profile, cached_at, platform_name
 		FROM instance_cache
 		WHERE profile = ? AND region = ? AND cached_at >= ?
 		ORDER BY name ASC
@@ -42,7 +44,7 @@ func GetCachedInstances(db *sql.DB, profile, region string) ([]CachedInstance, e
 		if err := rows.Scan(
 			&inst.InstanceID, &inst.Name, &inst.State, &inst.SSMStatus,
 			&inst.PrivateIP, &inst.AgentVersion, &inst.Region, &inst.Profile,
-			&cachedAtUnix,
+			&cachedAtUnix, &inst.PlatformName,
 		); err != nil {
 			return nil, err
 		}
@@ -62,12 +64,14 @@ func UpsertInstances(db *sql.DB, instances []CachedInstance) error {
 
 	stmt, err := tx.Prepare(`
 		INSERT INTO instance_cache
-			(instance_id, name, state, ssm_status, private_ip, agent_version, region, profile, cached_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(instance_id, name, state, ssm_status, private_ip, agent_version,
+			 region, profile, cached_at, platform_name)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(instance_id) DO UPDATE SET
 			name=excluded.name, state=excluded.state, ssm_status=excluded.ssm_status,
 			private_ip=excluded.private_ip, agent_version=excluded.agent_version,
-			region=excluded.region, profile=excluded.profile, cached_at=excluded.cached_at
+			region=excluded.region, profile=excluded.profile, cached_at=excluded.cached_at,
+			platform_name=excluded.platform_name
 	`)
 	if err != nil {
 		return err
@@ -78,7 +82,8 @@ func UpsertInstances(db *sql.DB, instances []CachedInstance) error {
 	for _, inst := range instances {
 		if _, err := stmt.Exec(
 			inst.InstanceID, inst.Name, inst.State, inst.SSMStatus,
-			inst.PrivateIP, inst.AgentVersion, inst.Region, inst.Profile, now,
+			inst.PrivateIP, inst.AgentVersion, inst.Region, inst.Profile,
+			now, inst.PlatformName,
 		); err != nil {
 			return err
 		}

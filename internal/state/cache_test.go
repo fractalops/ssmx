@@ -56,6 +56,27 @@ func TestGetCachedInstances_EmptyOnCacheMiss(t *testing.T) {
 	}
 }
 
+func TestUpsertAndGet_PlatformName(t *testing.T) {
+	db := openTestDB(t)
+	instances := []CachedInstance{
+		{
+			InstanceID: "i-001", Name: "web", State: "running",
+			SSMStatus: "online", PrivateIP: "10.0.0.1", AgentVersion: "3.2",
+			Region: "us-east-1", Profile: "default", PlatformName: "Ubuntu",
+		},
+	}
+	if err := UpsertInstances(db, instances); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	got, err := GetCachedInstances(db, "default", "us-east-1")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(got) != 1 || got[0].PlatformName != "Ubuntu" {
+		t.Errorf("expected PlatformName=Ubuntu, got %q", got[0].PlatformName)
+	}
+}
+
 func TestUpsertInstances_UpdatesExisting(t *testing.T) {
 	db := openTestDB(t)
 

@@ -14,6 +14,7 @@ type SSMInfo struct {
 	PingStatus   string
 	AgentVersion string
 	LastPingAt   string
+	PlatformName string
 }
 
 // ListManagedInstances returns SSM's view of all managed instances.
@@ -34,6 +35,7 @@ func ListManagedInstances(ctx context.Context, cfg aws.Config) (map[string]SSMIn
 				PingStatus:   string(info.PingStatus),
 				AgentVersion: aws.ToString(info.AgentVersion),
 				LastPingAt:   info.LastPingDateTime.String(),
+				PlatformName: aws.ToString(info.PlatformName),
 			}
 		}
 	}
@@ -55,6 +57,7 @@ func MergeSSMInfo(instances []Instance, ssmInfo map[string]SSMInfo) {
 			}
 			instances[i].AgentVersion = info.AgentVersion
 			instances[i].LastPingAt = info.LastPingAt
+			instances[i].PlatformName = info.PlatformName
 		}
 	}
 }

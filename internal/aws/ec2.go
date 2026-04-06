@@ -23,6 +23,7 @@ type Instance struct {
 	SSMStatus     string
 	AgentVersion  string
 	LastPingAt    string
+	PlatformName  string // e.g. "Amazon Linux", "Ubuntu" — from SSM DescribeInstanceInformation
 }
 
 // ListInstances returns all EC2 instances visible to the caller, optionally

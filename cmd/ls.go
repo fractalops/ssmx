@@ -58,6 +58,7 @@ func runList(cmd *cobra.Command) error {
 				SSMStatus:    c.SSMStatus,
 				PrivateIP:    c.PrivateIP,
 				AgentVersion: c.AgentVersion,
+				PlatformName: c.PlatformName,
 			})
 		}
 	} else {
@@ -84,6 +85,7 @@ func runList(cmd *cobra.Command) error {
 				AgentVersion: inst.AgentVersion,
 				Region:       region,
 				Profile:      profile,
+				PlatformName: inst.PlatformName,
 			})
 		}
 		_ = state.UpsertInstances(db, toCache)

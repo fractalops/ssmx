@@ -45,7 +45,8 @@ func migrate(db *sql.DB) error {
 			agent_version TEXT NOT NULL DEFAULT '',
 			region        TEXT NOT NULL DEFAULT '',
 			profile       TEXT NOT NULL DEFAULT '',
-			cached_at     INTEGER NOT NULL
+			cached_at     INTEGER NOT NULL,
+			platform_name TEXT NOT NULL DEFAULT ''
 		);
 
 		CREATE TABLE IF NOT EXISTS session_history (
@@ -67,5 +68,32 @@ func migrate(db *sql.DB) error {
 			created_at   INTEGER NOT NULL
 		);
 	`)
+	if err != nil {
+		return err
+	}
+	// Add platform_name to existing installations that predate this column.
+	return addColumnIfMissing(db, "instance_cache", "platform_name", "TEXT NOT NULL DEFAULT ''")
+}
+
+func addColumnIfMissing(db *sql.DB, table, column, def string) error {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notnull int
+		var dflt sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			return nil // already present
+		}
+	}
+	_, err = db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + def)
 	return err
 }
