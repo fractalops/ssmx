@@ -194,7 +194,11 @@ func runSSHGen() error {
 		return err
 	}
 
-	sshDir := filepath.Join(os.Getenv("HOME"), ".ssh", "config.d")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolving home dir: %w", err)
+	}
+	sshDir := filepath.Join(home, ".ssh", "config.d")
 	if err := os.MkdirAll(sshDir, 0o700); err != nil {
 		return fmt.Errorf("creating %s: %w", sshDir, err)
 	}
@@ -208,7 +212,6 @@ func runSSHGen() error {
 
 	keyPath := cfg.SSHKeyPath
 	if keyPath == "" {
-		home, _ := os.UserHomeDir()
 		keyPath = filepath.Join(home, ".ssmx", "ssh_key")
 	}
 
@@ -239,7 +242,8 @@ func promptKeySelection() (string, error) {
 			defaultPath,
 		))
 	}
-	ssmxKeyPath := filepath.Join(os.Getenv("HOME"), ".ssmx", "ssh_key")
+	home, _ := os.UserHomeDir()
+	ssmxKeyPath := filepath.Join(home, ".ssmx", "ssh_key")
 	opts = append(opts, huh.NewOption(
 		fmt.Sprintf("Generate a new ssmx-managed key  (%s)", ssmxKeyPath),
 		"__generate__",

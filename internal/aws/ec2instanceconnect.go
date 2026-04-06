@@ -13,7 +13,7 @@ import (
 // az is the instance's availability zone (e.g. "us-east-1a").
 func SendSSHPublicKey(ctx context.Context, cfg aws.Config, instanceID, az, osUser, pubKey string) error {
 	client := ec2instanceconnect.NewFromConfig(cfg)
-	_, err := client.SendSSHPublicKey(ctx, &ec2instanceconnect.SendSSHPublicKeyInput{
+	out, err := client.SendSSHPublicKey(ctx, &ec2instanceconnect.SendSSHPublicKeyInput{
 		InstanceId:       aws.String(instanceID),
 		InstanceOSUser:   aws.String(osUser),
 		SSHPublicKey:     aws.String(pubKey),
@@ -21,6 +21,9 @@ func SendSSHPublicKey(ctx context.Context, cfg aws.Config, instanceID, az, osUse
 	})
 	if err != nil {
 		return fmt.Errorf("ec2-instance-connect: %w", err)
+	}
+	if !out.Success {
+		return fmt.Errorf("ec2-instance-connect: key delivery was not acknowledged (check availability zone and instance agent status)")
 	}
 	return nil
 }
