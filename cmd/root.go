@@ -165,7 +165,7 @@ func init() {
 	rootCmd.Flags().BoolVarP(&flagList, "list", "l", false, "list instances and SSM health")
 	rootCmd.Flags().BoolVar(&flagConfigure, "configure", false, "open interactive settings menu")
 	rootCmd.Flags().BoolVar(&flagProxy, "proxy", false, "")
-	rootCmd.Flags().StringArrayVar(&flagForwards, "L", nil, "port forward: localPort:remoteHost:remotePort or port (repeatable)")
+	rootCmd.Flags().StringArrayVarP(&flagForwards, "forward", "L", nil, "port forward: localPort:remoteHost:remotePort or port (repeatable)")
 	rootCmd.Flags().BoolVar(&flagPersist, "persist", false, "auto-reconnect port forwards on drop")
 	rootCmd.Flags().DurationVar(&flagTimeout, "timeout", 0, "timeout for one-shot exec (e.g. 30s, 2m); 0 means no timeout")
 	rootCmd.Flags().MarkHidden("proxy")
