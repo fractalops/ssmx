@@ -94,6 +94,9 @@ func addColumnIfMissing(db *sql.DB, table, column, def string) error {
 			return nil // already present
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
 	_, err = db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + def)
 	return err
 }
