@@ -55,17 +55,15 @@ func runHealth(cmd *cobra.Command, target string) error {
 // printResults ranges over ch, printing a section header whenever the section
 // changes, then a glyph + label + optional detail for each Result.
 func printResults(ch <-chan health.Result, isTTY bool) {
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#626262"))
-
 	var currentSection string
 	errors, warnings := 0, 0
 
 	for r := range ch {
 		if r.Section != currentSection {
-			currentSection = r.Section
 			if currentSection != "" {
 				fmt.Println() // blank line between sections
 			}
+			currentSection = r.Section
 			if isTTY {
 				fmt.Println(tui.StyleHeader.Render(currentSection))
 			} else {
@@ -81,7 +79,7 @@ func printResults(ch <-chan health.Result, isTTY bool) {
 		line := fmt.Sprintf("  %s  %s", glyph, r.Label)
 		if r.Detail != "" {
 			if isTTY {
-				line += "  " + dimStyle.Render(r.Detail)
+				line += "  " + tui.StyleDim.Render(r.Detail)
 			} else {
 				line += "  (" + r.Detail + ")"
 			}
