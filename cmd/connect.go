@@ -63,7 +63,7 @@ func runExec(cmd *cobra.Command, target string, remoteCmd []string) error {
 		fmt.Fprintf(os.Stderr, "%s  %s (%s) is not reachable via SSM\n",
 			tui.StyleWarning.Render("!"), inst.Name, inst.InstanceID,
 		)
-		fmt.Fprintf(os.Stderr, "  Run %s to investigate\n", tui.StyleBold.Render("ssmx diagnose "+inst.InstanceID))
+		fmt.Fprintf(os.Stderr, "  Run %s to investigate\n", tui.StyleBold.Render("ssmx "+inst.InstanceID+" --health"))
 		return &errOffline{inst}
 	}
 
@@ -132,7 +132,7 @@ func runConnect(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "%s  %s (%s) is not reachable via SSM\n",
 			tui.StyleWarning.Render("!"), target.Name, target.InstanceID,
 		)
-		fmt.Fprintf(os.Stderr, "  Run %s to investigate\n", tui.StyleBold.Render("ssmx diagnose "+target.InstanceID))
+		fmt.Fprintf(os.Stderr, "  Run %s to investigate\n", tui.StyleBold.Render("ssmx "+target.InstanceID+" --health"))
 		return &errOffline{target}
 	}
 

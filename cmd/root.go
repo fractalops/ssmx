@@ -22,6 +22,7 @@ var (
 	flagForwards    []string
 	flagPersist     bool
 	flagTimeout     time.Duration
+	flagHealth      bool
 )
 
 type rootAction int
@@ -35,6 +36,7 @@ const (
 	actionConfigure            // --configure
 	actionSSHProxy             // --proxy (internal)
 	actionForward              // one or more -L flags
+	actionHealth               // --health flag
 )
 
 type rootArgs struct {
@@ -47,7 +49,7 @@ type rootArgs struct {
 // parseRootArgs determines what action to take given root command invocation.
 // dashAt is the index into args where -- appeared (-1 if absent), as returned
 // by cobra's ArgsLenAtDash().
-func parseRootArgs(interactive, list, configure, proxy, hasForwards bool, args []string, dashAt int) rootArgs {
+func parseRootArgs(interactive, list, configure, proxy, hasForwards, health bool, args []string, dashAt int) rootArgs {
 	if proxy && len(args) >= 2 {
 		return rootArgs{action: actionSSHProxy, target: args[0], user: args[1]}
 	}
@@ -67,6 +69,9 @@ func parseRootArgs(interactive, list, configure, proxy, hasForwards bool, args [
 		return rootArgs{action: actionHelp}
 	}
 	target := args[0]
+	if health && target != "" {
+		return rootArgs{action: actionHealth, target: target}
+	}
 	if dashAt > 0 {
 		return rootArgs{action: actionExec, target: target, remoteCmd: args[dashAt:]}
 	}
@@ -102,7 +107,7 @@ var rootCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		parsed := parseRootArgs(
 			flagInteractive, flagList, flagConfigure,
-			flagProxy, len(flagForwards) > 0,
+			flagProxy, len(flagForwards) > 0, flagHealth,
 			args, cmd.ArgsLenAtDash(),
 		)
 		switch parsed.action {
@@ -126,6 +131,8 @@ var rootCmd = &cobra.Command{
 				return err
 			}
 			return runForward(cmd, parsed.target, forwards, flagPersist)
+		case actionHealth:
+			return runHealth(cmd, parsed.target)
 		}
 		return nil
 	},
@@ -168,5 +175,6 @@ func init() {
 	rootCmd.Flags().StringArrayVarP(&flagForwards, "forward", "L", nil, "port forward: localPort:remoteHost:remotePort or port (repeatable)")
 	rootCmd.Flags().BoolVar(&flagPersist, "persist", false, "auto-reconnect port forwards on drop")
 	rootCmd.Flags().DurationVar(&flagTimeout, "timeout", 0, "timeout for one-shot exec (e.g. 30s, 2m); 0 means no timeout")
+	rootCmd.Flags().BoolVar(&flagHealth, "health", false, "run connectivity health checks for target")
 	rootCmd.Flags().MarkHidden("proxy")
 }
