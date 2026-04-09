@@ -1,4 +1,5 @@
 BINARY_NAME=ssmx
+SSMCP=ssmcp
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -s -w"
@@ -13,6 +14,13 @@ GOTEST=$(GOCMD) test
 build:
 	$(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) .
 
+build-ssmcp:
+	$(GOBUILD) $(LDFLAGS) -o $(SSMCP)/$(SSMCP) ./ssmcp
+
+install-ssmcp:
+	$(GOBUILD) $(LDFLAGS) -o /usr/local/bin/$(SSMCP) ./ssmcp
+	@echo "Installed $(SSMCP) to /usr/local/bin/"
+
 build-all: clean
 	GOOS=linux   GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME)-linux-amd64 .
 	GOOS=linux   GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME)-linux-arm64 .
@@ -22,7 +30,7 @@ build-all: clean
 
 clean:
 	$(GOCLEAN)
-	rm -f $(BINARY_NAME) $(BINARY_NAME)-* coverage.out coverage.html
+	rm -f $(BINARY_NAME) $(BINARY_NAME)-* ./$(SSMCP)/$(SSMCP) coverage.out coverage.html
 
 test:
 	$(GOTEST) -v -race ./...
@@ -57,6 +65,6 @@ release-dry:
 	goreleaser release --snapshot --clean --skip-publish
 
 help:
-	@echo "Targets: build build-all clean test test-coverage lint fmt audit deps install install-system release-dry"
+	@echo "Targets: build build-ssmcp build-all clean test test-coverage lint fmt audit deps install install-system install-ssmcp release-dry"
 
-.PHONY: build build-all clean test test-coverage lint fmt audit deps install install-system release-dry help
+.PHONY: build build-ssmcp build-all clean test test-coverage lint fmt audit deps install install-system install-ssmcp release-dry help
