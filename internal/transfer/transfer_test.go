@@ -16,7 +16,7 @@ func TestBuildScpArgs_LocalToRemote(t *testing.T) {
 	got := buildScpArgs("/usr/local/bin/ssmcp", "i-0abc123def", spec)
 	want := []string{
 		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ProxyCommand=/usr/local/bin/ssmcp --proxy %h %r",
+		"-o", "ProxyCommand=\"/usr/local/bin/ssmcp\" --proxy %h %r",
 		"-i", "/home/user/.ssmx/ssh_key",
 		"./file.txt",
 		"ec2-user@i-0abc123def:/tmp/",
@@ -37,7 +37,7 @@ func TestBuildScpArgs_RemoteToLocal(t *testing.T) {
 	got := buildScpArgs("/usr/local/bin/ssmcp", "i-0abc123def", spec)
 	want := []string{
 		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ProxyCommand=/usr/local/bin/ssmcp --proxy %h %r",
+		"-o", "ProxyCommand=\"/usr/local/bin/ssmcp\" --proxy %h %r",
 		"-i", "/home/user/.ssmx/ssh_key",
 		"ubuntu@i-0abc123def:/var/log/app.log",
 		"./logs/",
@@ -58,7 +58,7 @@ func TestBuildScpArgs_Recursive(t *testing.T) {
 	got := buildScpArgs("/usr/local/bin/ssmcp", "i-0abc123def", spec)
 	want := []string{
 		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ProxyCommand=/usr/local/bin/ssmcp --proxy %h %r",
+		"-o", "ProxyCommand=\"/usr/local/bin/ssmcp\" --proxy %h %r",
 		"-r",
 		"./dist/",
 		"ec2-user@i-0abc123def:/srv/app/",
@@ -80,7 +80,7 @@ func TestBuildScpArgs_WithProfile(t *testing.T) {
 	got := buildScpArgs("/usr/local/bin/ssmcp", "i-0abc123def", spec)
 	want := []string{
 		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ProxyCommand=/usr/local/bin/ssmcp --profile staging --region eu-west-1 --proxy %h %r",
+		"-o", "ProxyCommand=\"/usr/local/bin/ssmcp\" --profile staging --region eu-west-1 --proxy %h %r",
 		"./file.txt",
 		"ec2-user@i-0abc123def:/tmp/",
 	}
@@ -98,9 +98,13 @@ func TestBuildScpArgs_NoKeyPath(t *testing.T) {
 		KeyPath:    "",
 	}
 	got := buildScpArgs("/usr/local/bin/ssmcp", "i-0abc123def", spec)
-	for i, arg := range got {
-		if arg == "-i" {
-			t.Errorf("expected no -i flag, found at index %d", i)
-		}
+	want := []string{
+		"-o", "StrictHostKeyChecking=accept-new",
+		"-o", "ProxyCommand=\"/usr/local/bin/ssmcp\" --proxy %h %r",
+		"./file.txt",
+		"ec2-user@i-0abc123def:/tmp/",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("got  %v\nwant %v", got, want)
 	}
 }

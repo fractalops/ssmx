@@ -11,7 +11,7 @@ import (
 type Direction int
 
 const (
-	LocalToRemote Direction = iota
+	LocalToRemote Direction = iota // zero value — default when Direction is not set
 	RemoteToLocal
 )
 
@@ -31,7 +31,7 @@ type CopySpec struct {
 // ssmxPath is the absolute path to the running binary, used as the ProxyCommand.
 // Extracted for testability — Copy calls this then execs scp.
 func buildScpArgs(ssmxPath, instanceID string, spec CopySpec) []string {
-	proxy := ssmxPath
+	proxy := fmt.Sprintf("%q", ssmxPath)
 	if spec.Profile != "" {
 		proxy += " --profile " + spec.Profile
 	}
@@ -48,6 +48,8 @@ func buildScpArgs(ssmxPath, instanceID string, spec CopySpec) []string {
 		src, dst = spec.LocalPath, remote
 	case RemoteToLocal:
 		src, dst = remote, spec.LocalPath
+	default:
+		panic(fmt.Sprintf("transfer: unknown Direction %d", spec.Direction))
 	}
 
 	args := []string{
