@@ -1,11 +1,15 @@
 package ssh
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/pem"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+
+	gossh "golang.org/x/crypto/ssh"
 )
 
 // DefaultSSHUser returns the default SSH username for the given SSM PlatformName.
@@ -60,9 +64,8 @@ func LoadOrGenerateKey(keyPath string) (pubKey string, resolvedPath string, err 
 		if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
 			return "", "", fmt.Errorf("creating key dir: %w", err)
 		}
-		cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-N", "", "-f", keyPath)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return "", "", fmt.Errorf("ssh-keygen: %w\n%s", err, out)
+		if err := generateEd25519Key(keyPath); err != nil {
+			return "", "", err
 		}
 	}
 
@@ -71,4 +74,34 @@ func LoadOrGenerateKey(keyPath string) (pubKey string, resolvedPath string, err 
 		return "", "", fmt.Errorf("reading public key %s: %w", pubPath, err)
 	}
 	return strings.TrimSpace(string(data)), keyPath, nil
+}
+
+// generateEd25519Key generates a new ed25519 keypair and writes the private
+// key (OpenSSH PEM format, mode 0600) and public key (authorized_keys format,
+// mode 0644) to keyPath and keyPath+".pub" respectively.
+func generateEd25519Key(keyPath string) error {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return fmt.Errorf("generating ed25519 key: %w", err)
+	}
+
+	// Private key: OpenSSH PEM format.
+	pemBlock, err := gossh.MarshalPrivateKey(priv, "")
+	if err != nil {
+		return fmt.Errorf("marshaling private key: %w", err)
+	}
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(pemBlock), 0o600); err != nil {
+		return fmt.Errorf("writing private key: %w", err)
+	}
+
+	// Public key: authorized_keys format (e.g. "ssh-ed25519 AAAA...").
+	sshPub, err := gossh.NewPublicKey(pub)
+	if err != nil {
+		return fmt.Errorf("converting public key: %w", err)
+	}
+	if err := os.WriteFile(keyPath+".pub", gossh.MarshalAuthorizedKey(sshPub), 0o644); err != nil {
+		return fmt.Errorf("writing public key: %w", err)
+	}
+
+	return nil
 }
