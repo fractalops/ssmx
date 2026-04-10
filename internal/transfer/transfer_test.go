@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
@@ -133,5 +134,21 @@ func TestLoadSigner_InvalidPEM(t *testing.T) {
 	_, err := loadSigner(keyPath)
 	if err == nil {
 		t.Error("expected error for invalid PEM key, got nil")
+	}
+}
+
+// TestCopyRemoteToRemote_FailsWithBadKey verifies that CopyRemoteToRemote
+// returns an error when the key file does not exist, before touching the network.
+func TestCopyRemoteToRemote_FailsWithBadKey(t *testing.T) {
+	err := CopyRemoteToRemote(context.Background(),
+		"i-0src123", "/srv/app",
+		"i-0dst456", "/srv/app",
+		CopySpec{
+			User:    "ec2-user",
+			KeyPath: "/nonexistent/key",
+		},
+	)
+	if err == nil {
+		t.Error("expected error for missing key, got nil")
 	}
 }

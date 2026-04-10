@@ -14,6 +14,7 @@ import (
 
 	"github.com/pkg/sftp"
 	gossh "golang.org/x/crypto/ssh"
+	"golang.org/x/sync/errgroup"
 )
 
 // Direction indicates which end of the copy is remote.
@@ -287,4 +288,92 @@ func downloadDir(client *sftp.Client, remoteDir, localDir string) error {
 func isLocalDir(p string) bool {
 	info, err := os.Stat(p)
 	return err == nil && info.IsDir()
+}
+
+// CopyRemoteToRemote streams files from srcInstanceID:srcPath to
+// dstInstanceID:dstPath by piping tar over two parallel SSH sessions.
+// Data flows through local memory only — no temp files, no direct
+// instance-to-instance network required.
+//
+// Both instances must have tar available. spec.User and spec.KeyPath
+// are used for both connections; use --user to override if they differ.
+func CopyRemoteToRemote(ctx context.Context, srcInstanceID, srcPath, dstInstanceID, dstPath string, spec CopySpec) error {
+	signer, err := loadSigner(spec.KeyPath)
+	if err != nil {
+		return err
+	}
+
+	srcConn, err := dialProxy(ctx, srcInstanceID, spec.User, spec.Profile, spec.Region)
+	if err != nil {
+		return fmt.Errorf("connecting to source %s: %w", srcInstanceID, err)
+	}
+	defer srcConn.Close()
+
+	dstConn, err := dialProxy(ctx, dstInstanceID, spec.User, spec.Profile, spec.Region)
+	if err != nil {
+		return fmt.Errorf("connecting to destination %s: %w", dstInstanceID, err)
+	}
+	defer dstConn.Close()
+
+	srcClient, err := dialSSH(srcConn, srcInstanceID, spec.User, signer)
+	if err != nil {
+		return err
+	}
+	defer srcClient.Close()
+
+	dstClient, err := dialSSH(dstConn, dstInstanceID, spec.User, signer)
+	if err != nil {
+		return err
+	}
+	defer dstClient.Close()
+
+	srcSession, err := srcClient.NewSession()
+	if err != nil {
+		return fmt.Errorf("opening source SSH session: %w", err)
+	}
+	defer func() { _ = srcSession.Close() }()
+
+	dstSession, err := dstClient.NewSession()
+	if err != nil {
+		return fmt.Errorf("opening destination SSH session: %w", err)
+	}
+	defer func() { _ = dstSession.Close() }()
+
+	pr, pw := io.Pipe()
+	srcSession.Stdout = pw
+	srcSession.Stderr = os.Stderr
+	dstSession.Stdin = pr
+	dstSession.Stdout = os.Stdout
+	dstSession.Stderr = os.Stderr
+
+	// Tar the source into the pipe; extract on destination.
+	// -C changes to the parent dir so the archive is relative to the item itself.
+	srcCmd := fmt.Sprintf("tar czf - -C %s %s", shellQuote(path.Dir(srcPath)), shellQuote(path.Base(srcPath)))
+	dstCmd := fmt.Sprintf("mkdir -p %s && tar xzf - -C %s", shellQuote(dstPath), shellQuote(dstPath))
+
+	g, _ := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		defer func() { _ = pw.Close() }()
+		if err := srcSession.Run(srcCmd); err != nil {
+			return fmt.Errorf("source tar: %w", err)
+		}
+		return nil
+	})
+
+	g.Go(func() error {
+		if err := dstSession.Run(dstCmd); err != nil {
+			_ = pr.CloseWithError(err)
+			return fmt.Errorf("destination tar: %w", err)
+		}
+		return nil
+	})
+
+	return g.Wait()
+}
+
+// shellQuote wraps a path in single quotes for safe use in remote shell commands.
+// Handles single quotes in paths by escaping them.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

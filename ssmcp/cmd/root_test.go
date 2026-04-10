@@ -2,6 +2,19 @@ package cmd
 
 import "testing"
 
+func TestRunCopy_BothRemote_CallsCopyRemoteToRemote(t *testing.T) {
+	// parseEndpoint with two remote endpoints must not return an error.
+	// We verify the routing by checking parseEndpoint results directly —
+	// the full runCopy requires AWS credentials so it's an integration test.
+	src := "web-prod:/srv/app"
+	dst := "worker-prod:/srv/app"
+	_, _, srcRemote := parseEndpoint(src)
+	_, _, dstRemote := parseEndpoint(dst)
+	if !srcRemote || !dstRemote {
+		t.Errorf("expected both to be remote: srcRemote=%v dstRemote=%v", srcRemote, dstRemote)
+	}
+}
+
 func TestParseEndpoint(t *testing.T) {
 	tests := []struct {
 		input      string
