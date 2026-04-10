@@ -10,15 +10,15 @@ A utility to simplify aws ssm operations
 
 ## Features
 
-- **Interactive TUI** — fuzzy-search instance picker with SSM health status
-- **exec** — `ssmx web-prod -- df -h` streams output live, exit codes propagate
-- **Bookmarking** — saves instances you connect to for fast re-access
-- **interactive setup** — detects missing credentials, region, and Session Manager plugin; offers to install
-- **SSH config generation** — `ssmx --configure` → "Generate SSH config" writes ProxyCommand entries to `~/.ssh/config.d/ssmx`
-- **Pipe-friendly** — `ssmx -l --format json` and non-TTY output work cleanly in scripts
-- **Port forwarding** — Simplified intuitive port forwarding
-- **Health diagnostics** — `ssmx <host> --health` streams read-only SSM connectivity checks with pass/warn/error results
-- **File copy** — `ssmcp web-prod:/path ./local` copies files over SSM without open ports (separate `ssmcp` binary)
+- **Interactive TUI:** fuzzy-search instance picker with SSM health status
+- **exec:** `ssmx web-prod -- df -h` streams output live, exit codes propagate
+- **Bookmarking:** saves instances you connect to for fast re-access
+- **interactive setup:** detects missing credentials, region, and Session Manager plugin; offers to install
+- **SSH config generation:** `ssmx --configure` → "Generate SSH config" writes ProxyCommand entries to `~/.ssh/config.d/ssmx`
+- **Pipe-friendly:** `ssmx -l --format json` and non-TTY output work cleanly in scripts
+- **Port forwarding:** Simplified intuitive port forwarding
+- **Health diagnostics:** `ssmx <host> --health` streams read-only SSM connectivity checks with pass/warn/error results
+- **File copy:** `ssmcp web-prod:/path ./local` copies files over SSM without open ports (separate `ssmcp` binary)
 
 ## Installation
 
@@ -38,7 +38,7 @@ sudo make install-system
 ### Prerequisites
 
 - AWS credentials configured (`aws configure` or environment variables)
-- [AWS Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) — ssmx will offer to install it on first run
+- [AWS Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html): ssmx will offer to install it on first run
 
 ## Usage
 
@@ -67,8 +67,8 @@ ssmx --configure                     # manage bookmarks, profile, region, SSH co
 Anywhere a target is accepted, ssmx resolves it in this order:
 
 1. Bookmark alias (from `~/.ssmx/config.yaml`)
-2. Name tag — exact match
-3. Name tag — prefix match
+2. Name tag: exact match
+3. Name tag: prefix match
 4. Instance ID (`i-*`)
 
 Ambiguous matches open an interactive disambiguation picker.
@@ -76,7 +76,7 @@ Ambiguous matches open an interactive disambiguation picker.
 ### Exec
 
 ```bash
-# Run a command and get output back — streams live, no buffering
+# Run a command and get output back: streams live, no buffering
 ssmx web-prod -- "journalctl -u app --since '5 min ago'"
 
 # Pipe stdin through to the remote process
@@ -120,7 +120,7 @@ ssmcp -r web-prod:/etc/nginx/ ./nginx-backup/
 ssmcp --profile staging --region us-west-2 ./script.sh web-staging:/tmp/
 ```
 
-`ssmcp` uses the same target resolution as `ssmx` (bookmark → Name tag → instance ID) and requires no open ports — it tunnels `scp` over the SSM SSH session.
+`ssmcp` uses the same target resolution as `ssmx` (bookmark → Name tag → instance ID) and requires no open ports: it tunnels `scp` over the SSM SSH session.
 
 ### SSH ProxyCommand integration
 
@@ -128,19 +128,19 @@ ssmcp --profile staging --region us-west-2 ./script.sh web-staging:/tmp/
 ssmx --configure   # select "Generate SSH config"
 ```
 
-Writes entries to `~/.ssh/config.d/ssmx` so you can `ssh web-prod` directly through SSM — no bastion, no open ports. Add `Include ~/.ssh/config.d/ssmx` to your `~/.ssh/config` to activate.
+Writes entries to `~/.ssh/config.d/ssmx` so you can `ssh web-prod` directly through SSM: no bastion, no open ports. Add `Include ~/.ssh/config.d/ssmx` to your `~/.ssh/config` to activate.
 
 ## Local state
 
 ```
 ~/.ssmx/
   config.yaml    # profiles, aliases/bookmarks, default region
-  state.db       # sqlite — instance cache
+  state.db       # sqlite: instance cache
 ```
 
 ## Roadmap
 
-- `ssmx <host> --fix` — diagnose + remediate broken SSM setups (reversible)
+- `ssmx <host> --fix`: diagnose + remediate broken SSM setups (reversible)
 
 
 ## Contributing
