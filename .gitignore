@@ -17,3 +17,6 @@ vendor/
 .idea/
 .vscode/
 *.swp
+
+# Git worktrees
+.worktrees/
