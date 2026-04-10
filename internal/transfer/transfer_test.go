@@ -57,7 +57,7 @@ func TestProxyConn_ReadWrite(t *testing.T) {
 	// pr2/pw2: data written by conn flows out of the WriteCloser (simulates subprocess stdin)
 	pr2, pw2 := io.Pipe()
 
-	conn := &proxyConn{Reader: pr1, WriteCloser: pw2}
+	conn := &proxyConn{stdout: pr1, stdin: pw2}
 
 	done := make(chan struct{})
 	go func() {

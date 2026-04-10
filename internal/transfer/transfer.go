@@ -39,15 +39,20 @@ type CopySpec struct {
 // proxyConn wraps a subprocess's stdin/stdout as a net.Conn.
 // Reads come from the subprocess stdout; writes go to subprocess stdin.
 type proxyConn struct {
-	io.Reader
-	io.WriteCloser
-	cmd *exec.Cmd
+	stdout io.ReadCloser
+	stdin  io.WriteCloser
+	cmd    *exec.Cmd
 }
 
+func (p *proxyConn) Read(b []byte) (int, error)  { return p.stdout.Read(b) }
+func (p *proxyConn) Write(b []byte) (int, error) { return p.stdin.Write(b) }
+
 func (p *proxyConn) Close() error {
-	_ = p.WriteCloser.Close()
+	_ = p.stdin.Close()
+	_ = p.stdout.Close()
 	if p.cmd != nil && p.cmd.Process != nil {
 		_ = p.cmd.Process.Kill()
+		_ = p.cmd.Wait()
 	}
 	return nil
 }
@@ -107,9 +112,11 @@ func dialProxy(ctx context.Context, instanceID, user, profile, region string) (n
 	}
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		_ = stdout.Close()
 		return nil, fmt.Errorf("starting proxy: %w", err)
 	}
-	return &proxyConn{Reader: stdout, WriteCloser: stdin, cmd: cmd}, nil
+	return &proxyConn{stdout: stdout, stdin: stdin, cmd: cmd}, nil
 }
 
 // dialSSH dials SSH over conn using the given signer and returns a ready SSH client.
@@ -150,13 +157,23 @@ func Copy(ctx context.Context, instanceID string, spec CopySpec) error {
 	}
 	defer sftpClient.Close()
 
-	switch spec.Direction {
-	case LocalToRemote:
-		return upload(sftpClient, spec.LocalPath, spec.RemotePath, spec.Recursive)
-	case RemoteToLocal:
-		return download(sftpClient, spec.RemotePath, spec.LocalPath, spec.Recursive)
-	default:
-		panic(fmt.Sprintf("transfer: unknown Direction %d", spec.Direction))
+	type result struct{ err error }
+	ch := make(chan result, 1)
+	go func() {
+		switch spec.Direction {
+		case LocalToRemote:
+			ch <- result{upload(sftpClient, spec.LocalPath, spec.RemotePath, spec.Recursive)}
+		case RemoteToLocal:
+			ch <- result{download(sftpClient, spec.RemotePath, spec.LocalPath, spec.Recursive)}
+		default:
+			ch <- result{fmt.Errorf("transfer: unknown Direction %d", spec.Direction)}
+		}
+	}()
+	select {
+	case r := <-ch:
+		return r.err
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -177,7 +194,7 @@ func upload(client *sftp.Client, localPath, remotePath string, recursive bool) e
 
 func uploadFile(client *sftp.Client, localPath, remotePath string) error {
 	if strings.HasSuffix(remotePath, "/") {
-		remotePath = remotePath + filepath.Base(localPath)
+		remotePath = remotePath + path.Base(localPath)
 	}
 	if err := client.MkdirAll(path.Dir(remotePath)); err != nil {
 		return fmt.Errorf("creating remote dir: %w", err)
