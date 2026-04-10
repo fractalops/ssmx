@@ -219,7 +219,10 @@ func uploadDir(client *sftp.Client, localDir, remoteDir string) error {
 		if err != nil {
 			return err
 		}
-		rel, _ := filepath.Rel(localDir, localPath)
+		rel, err := filepath.Rel(localDir, localPath)
+		if err != nil {
+			return err
+		}
 		remotePath := remoteDir + "/" + filepath.ToSlash(rel)
 		if info.IsDir() {
 			return client.MkdirAll(remotePath)
@@ -270,7 +273,10 @@ func downloadDir(client *sftp.Client, remoteDir, localDir string) error {
 		if err := walker.Err(); err != nil {
 			return err
 		}
-		rel, _ := filepath.Rel(remoteDir, walker.Path())
+		rel, relErr := filepath.Rel(remoteDir, walker.Path())
+		if relErr != nil {
+			return relErr
+		}
 		target := filepath.Join(localDir, filepath.FromSlash(rel))
 		if walker.Stat().IsDir() {
 			if err := os.MkdirAll(target, 0o755); err != nil {

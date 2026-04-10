@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -37,7 +36,7 @@ func (e *errOffline) Error() string {
 var rootCmd = &cobra.Command{
 	Use:   "ssmcp SOURCE DEST",
 	Short: "Copy files to or from an EC2 instance over SSM",
-	Long: `Copy files to or from an EC2 instance using scp over an SSM SSH session.
+	Long: `Copy files to or from an EC2 instance via SFTP over an SSM SSH session.
 
 At least one of SOURCE or DEST must be a remote path (host:path).
 When both are remote, files are streamed instance-to-instance via tar — no temp files, no open ports.
@@ -226,11 +225,6 @@ func parseEndpoint(s string) (host, path string, remote bool) {
 // Execute is the entry point called from ssmcp/main.go.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			// Propagate scp's exit code directly.
-			os.Exit(exitErr.ExitCode())
-		}
 		var offline *errOffline
 		if errors.As(err, &offline) {
 			// Message already printed; just exit non-zero.
