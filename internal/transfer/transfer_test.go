@@ -94,3 +94,44 @@ func TestProxyConn_ReadWrite(t *testing.T) {
 	pr2.Close()
 	<-done
 }
+
+// TestProxyConn_Close verifies that calling Close on a proxyConn closes both
+// the stdout reader and the stdin writer.
+func TestProxyConn_Close(t *testing.T) {
+	pr1, _ := io.Pipe()
+	_, pw2 := io.Pipe()
+
+	conn := &proxyConn{stdout: pr1, stdin: pw2}
+
+	if err := conn.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// pr1 was closed — reading should fail
+	buf := make([]byte, 4)
+	_, err := conn.Read(buf)
+	if err == nil {
+		t.Error("expected error reading from closed conn, got nil")
+	}
+
+	// pw2 was closed — writing should fail with io.ErrClosedPipe
+	_, err = pw2.Write([]byte("x"))
+	if err != io.ErrClosedPipe {
+		t.Errorf("expected io.ErrClosedPipe writing to closed stdin, got %v", err)
+	}
+}
+
+// TestLoadSigner_InvalidPEM verifies that loadSigner returns an error when the
+// key file contains data that is not a valid PEM-encoded key.
+func TestLoadSigner_InvalidPEM(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "badkey")
+	if err := os.WriteFile(keyPath, []byte("not a valid pem key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := loadSigner(keyPath)
+	if err == nil {
+		t.Error("expected error for invalid PEM key, got nil")
+	}
+}
