@@ -351,7 +351,7 @@ func CopyRemoteToRemote(ctx context.Context, srcInstanceID, srcPath, dstInstance
 	srcCmd := fmt.Sprintf("tar czf - -C %s %s", shellQuote(path.Dir(srcPath)), shellQuote(path.Base(srcPath)))
 	dstCmd := fmt.Sprintf("mkdir -p %s && tar xzf - -C %s", shellQuote(dstPath), shellQuote(dstPath))
 
-	g, _ := errgroup.WithContext(ctx)
+	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
 		defer func() { _ = pw.Close() }()
@@ -368,6 +368,13 @@ func CopyRemoteToRemote(ctx context.Context, srcInstanceID, srcPath, dstInstance
 		}
 		return nil
 	})
+
+	// If either goroutine fails, cancel both sessions by closing their clients.
+	go func() {
+		<-gctx.Done()
+		_ = srcClient.Close()
+		_ = dstClient.Close()
+	}()
 
 	return g.Wait()
 }

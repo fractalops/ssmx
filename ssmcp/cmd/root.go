@@ -39,11 +39,13 @@ var rootCmd = &cobra.Command{
 	Short: "Copy files to or from an EC2 instance over SSM",
 	Long: `Copy files to or from an EC2 instance using scp over an SSM SSH session.
 
-Exactly one of SOURCE or DEST must be a remote path in host:path form:
+At least one of SOURCE or DEST must be a remote path (host:path).
+When both are remote, files are streamed instance-to-instance via tar — no temp files, no open ports.
 
   ssmcp ./file.txt web-prod:/tmp/
   ssmcp web-prod:/var/log/app.log ./
   ssmcp -r ./dist/ web-prod:/srv/app/
+  ssmcp web-prod:/data/ web-staging:/data/
 
 The host is resolved via bookmark alias, Name tag, or instance ID.
 EC2 Instance Connect must be available on the target instance.`,
@@ -165,8 +167,12 @@ func runCopy(cmd *cobra.Command, src, dst string) error {
 			fmt.Fprintf(os.Stderr, "%s  %s (%s) is not reachable via SSM\n",
 				tui.StyleWarning.Render("!"), dstInst.Name, dstInst.InstanceID,
 			)
+			fmt.Fprintf(os.Stderr, "  Run %s to investigate\n",
+				tui.StyleBold.Render("ssmx "+dstInst.InstanceID+" --health"),
+			)
 			return &errOffline{dstInst.Name, dstInst.InstanceID}
 		}
+		// tar handles directories recursively by default; Recursive flag is not needed.
 		return transfer.CopyRemoteToRemote(ctx, inst.InstanceID, srcPath, dstInst.InstanceID, dstPath,
 			transfer.CopySpec{
 				User:    user,
