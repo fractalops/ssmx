@@ -31,12 +31,14 @@ func parseForward(s string) (session.ForwardSpec, error) {
 
 	switch len(parts) {
 	case 1:
+		// Short form "-L 8080" — forward local 8080 to the instance's own port 8080.
 		local = parts[0]
 		host = "localhost"
 		remote = parts[0]
 	case 3:
 		local, host, remote = parts[0], parts[1], parts[2]
 	default:
+		// Two-part strings like "8080:9090" are ambiguous (missing host), so reject them.
 		return session.ForwardSpec{}, fmt.Errorf("invalid -L format %q: use port, or localPort:host:remotePort", s)
 	}
 
@@ -99,8 +101,11 @@ func runForward(cmd *cobra.Command, target string, forwards []session.ForwardSpe
 	}
 
 	var wg sync.WaitGroup
+	// Buffered so goroutines can write without blocking after wg.Wait returns.
 	errc := make(chan error, len(forwards))
 
+	// Each -L rule gets its own goroutine; they all run concurrently against the
+	// same SSM session (the plugin multiplexes them independently).
 	for _, fwd := range forwards {
 		fwd := fwd
 		wg.Add(1)
@@ -135,7 +140,7 @@ func runSingleForward(
 	for {
 		err := session.Forward(ctx, cfg, instanceID, region, profile, fwd)
 
-		// Clean exit (Ctrl-C or context cancelled).
+		// Clean exit (Ctrl-C or context cancelled) — not a reconnect case.
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -144,7 +149,8 @@ func runSingleForward(
 			return err
 		}
 
-		// Persist mode: log and reconnect.
+		// --persist: log the drop and wait before reconnecting.
+		// Jitter spreads reconnect storms when multiple forwards drop at once.
 		jitter := time.Duration(rand.Intn(500)) * time.Millisecond
 		fmt.Fprintf(os.Stderr, "  %s  %s dropped — reconnecting in %s\n",
 			tui.StyleWarning.Render("↺"), label, backoff+jitter,
@@ -156,6 +162,7 @@ func runSingleForward(
 		case <-time.After(backoff + jitter):
 		}
 
+		// Exponential backoff, capped at 30 s.
 		if backoff < 30*time.Second {
 			backoff *= 2
 		}

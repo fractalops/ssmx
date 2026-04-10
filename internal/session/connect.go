@@ -128,6 +128,10 @@ func Forward(ctx context.Context, cfg aws.Config, instanceID, region, profile st
 	var output *ssm.StartSessionOutput
 	var err error
 
+	// AWS uses two separate SSM documents depending on whether the final destination
+	// is the instance itself (AWS-StartPortForwardingSession) or a host reachable
+	// through the instance (AWS-StartPortForwardingSessionToRemoteHost). The latter
+	// adds a "host" parameter that the plugin forwards traffic to via the instance.
 	if fwd.IsLocal() {
 		output, err = awsclient.StartPortForwardingSession(ctx, cfg, instanceID, fwd.LocalPort, fwd.RemotePort)
 	} else {
@@ -145,6 +149,9 @@ func Forward(ctx context.Context, cfg aws.Config, instanceID, region, profile st
 	var docName string
 	var params map[string]any
 
+	// The plugin's 5th argv is the original StartSession request reproduced as JSON.
+	// Parameters must match the document schema exactly — field names differ between
+	// the two documents ("portNumber" vs "portNumber"+"host").
 	if fwd.IsLocal() {
 		docName = "AWS-StartPortForwardingSession"
 		params = map[string]any{
