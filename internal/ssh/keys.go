@@ -60,13 +60,15 @@ func LoadOrGenerateKey(keyPath string) (pubKey string, resolvedPath string, err 
 	pubPath := keyPath + ".pub"
 
 	// Generate if private key doesn't exist.
-	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
+	if _, statErr := os.Stat(keyPath); os.IsNotExist(statErr) {
 		if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
 			return "", "", fmt.Errorf("creating key dir: %w", err)
 		}
 		if err := generateEd25519Key(keyPath); err != nil {
 			return "", "", err
 		}
+	} else if statErr != nil {
+		return "", "", fmt.Errorf("checking key path: %w", statErr)
 	}
 
 	data, err := os.ReadFile(pubPath)
