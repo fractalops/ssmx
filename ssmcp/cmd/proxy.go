@@ -75,7 +75,7 @@ func runProxy(instanceID, user string) error {
 func resolveSSHUser(ctx context.Context, awsCfg awssdk.Config, instanceID, profile, region string) string {
 	if db, err := state.Open(); err == nil {
 		cached, _ := state.GetCachedInstances(db, profile, region)
-		db.Close()
+		_ = db.Close()
 		for _, c := range cached {
 			if c.InstanceID == instanceID {
 				return sshpkg.DefaultSSHUser(c.PlatformName)
@@ -99,7 +99,7 @@ func resolveSSHUser(ctx context.Context, awsCfg awssdk.Config, instanceID, profi
 func resolveAZ(ctx context.Context, awsCfg awssdk.Config, instanceID, profile, region string) (string, error) {
 	if db, err := state.Open(); err == nil {
 		cached, _ := state.GetCachedInstances(db, profile, region)
-		db.Close()
+		_ = db.Close()
 		for _, c := range cached {
 			if c.InstanceID == instanceID && c.AvailabilityZone != "" {
 				return c.AvailabilityZone, nil

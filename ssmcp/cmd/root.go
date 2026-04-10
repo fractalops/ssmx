@@ -113,7 +113,7 @@ func runCopy(cmd *cobra.Command, src, dst string) error {
 	if err != nil {
 		var ambig *resolver.ErrAmbiguous
 		if errors.As(err, &ambig) {
-			fmt.Fprintf(cmd.ErrOrStderr(), "%q is ambiguous (%d matches) — select one:\n", target, len(ambig.Matches))
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%q is ambiguous (%d matches) — select one:\n", target, len(ambig.Matches))
 			inst, err = tui.RunPicker(ambig.Matches)
 			if err != nil {
 				return err
@@ -209,5 +209,5 @@ func init() {
 	rootCmd.Flags().BoolVar(&flagProxy, "proxy", false, "")
 	rootCmd.Flags().BoolVarP(&flagRecursive, "recursive", "r", false, "copy directories recursively")
 	rootCmd.Flags().StringVarP(&flagUser, "user", "u", "", "remote SSH user (default: inferred from instance platform)")
-	rootCmd.Flags().MarkHidden("proxy")
+	_ = rootCmd.Flags().MarkHidden("proxy")
 }
