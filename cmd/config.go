@@ -208,7 +208,7 @@ func runSSHGen() error {
 	if err != nil {
 		return fmt.Errorf("creating SSH config: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	keyPath := cfg.SSHKeyPath
 	if keyPath == "" {

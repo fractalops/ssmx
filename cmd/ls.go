@@ -39,7 +39,7 @@ func runList(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	profile := flagProfile
 	if profile == "" {
@@ -70,7 +70,7 @@ func runList(cmd *cobra.Command) error {
 
 		ssmInfo, err := awsclient.ListManagedInstances(ctx, cfg)
 		if err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not fetch SSM info: %v\n", err)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not fetch SSM info: %v\n", err)
 		} else {
 			awsclient.MergeSSMInfo(instances, ssmInfo)
 		}

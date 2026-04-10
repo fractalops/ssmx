@@ -176,5 +176,5 @@ func init() {
 	rootCmd.Flags().BoolVar(&flagPersist, "persist", false, "auto-reconnect port forwards on drop")
 	rootCmd.Flags().DurationVar(&flagTimeout, "timeout", 0, "timeout for one-shot exec (e.g. 30s, 2m); 0 means no timeout")
 	rootCmd.Flags().BoolVar(&flagHealth, "health", false, "run connectivity health checks for target")
-	rootCmd.Flags().MarkHidden("proxy")
+	_ = rootCmd.Flags().MarkHidden("proxy")
 }

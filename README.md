@@ -101,6 +101,27 @@ ssmx -l
   worker-prod                    i-0ghi789def012        running   ✕ offline 10.0.2.10
 ```
 
+### File copy (ssmcp)
+
+```bash
+# Upload a file to a remote instance
+ssmcp ./deploy.sh web-prod:/tmp/
+
+# Download a log file
+ssmcp web-prod:/var/log/app.log ./
+
+# Copy a directory recursively
+ssmcp -r ./dist/ web-prod:/srv/app/
+
+# Download config recursively from a remote path
+ssmcp -r web-prod:/etc/nginx/ ./nginx-backup/
+
+# Use a specific AWS profile and region
+ssmcp --profile staging --region us-west-2 ./script.sh web-staging:/tmp/
+```
+
+`ssmcp` uses the same target resolution as `ssmx` (bookmark → Name tag → instance ID) and requires no open ports — it tunnels `scp` over the SSM SSH session.
+
 ### SSH ProxyCommand integration
 
 ```bash

@@ -178,7 +178,7 @@ func resolveTarget(ctx context.Context, cmd *cobra.Command, awsCfg aws.Config, c
 	if err != nil {
 		var ambig *resolver.ErrAmbiguous
 		if errors.As(err, &ambig) {
-			fmt.Fprintf(cmd.ErrOrStderr(), "%q is ambiguous (%d matches) — select one:\n", target, len(ambig.Matches))
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%q is ambiguous (%d matches) — select one:\n", target, len(ambig.Matches))
 			return tui.RunPicker(ambig.Matches)
 		}
 		return nil, err

@@ -53,7 +53,7 @@ func installDarwin() error {
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			fmt.Println()
-			os.Stderr.Write(out)
+			_, _ = os.Stderr.Write(out)
 			return fmt.Errorf("brew install session-manager-plugin: %w", err)
 		}
 		fmt.Println("done")
@@ -91,7 +91,7 @@ func installDarwinPkg() error {
 	if err != nil {
 		return fmt.Errorf("creating temp dir: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	pkgPath := filepath.Join(tmpDir, "session-manager-plugin.pkg")
 	fmt.Print("  Downloading session-manager-plugin.pkg... ")
@@ -146,9 +146,9 @@ func ensurePluginOnPath() error {
 		if _, err := os.Stat(candidate); err == nil {
 			current := os.Getenv("PATH")
 			if current != "" {
-				os.Setenv("PATH", dir+":"+current)
+				_ = os.Setenv("PATH", dir+":"+current)
 			} else {
-				os.Setenv("PATH", dir)
+				_ = os.Setenv("PATH", dir)
 			}
 			return nil
 		}

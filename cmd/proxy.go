@@ -76,7 +76,7 @@ func resolveSSHUser(ctx context.Context, awsCfg awssdk.Config, instanceID, profi
 	// Try the cache first.
 	if db, err := state.Open(); err == nil {
 		cached, _ := state.GetCachedInstances(db, profile, region)
-		db.Close()
+		_ = db.Close()
 		for _, c := range cached {
 			if c.InstanceID == instanceID {
 				return sshpkg.DefaultSSHUser(c.PlatformName)
@@ -102,7 +102,7 @@ func resolveAZ(ctx context.Context, awsCfg awssdk.Config, instanceID, profile, r
 	// Try the cache first.
 	if db, err := state.Open(); err == nil {
 		cached, _ := state.GetCachedInstances(db, profile, region)
-		db.Close()
+		_ = db.Close()
 		for _, c := range cached {
 			if c.InstanceID == instanceID && c.AvailabilityZone != "" {
 				return c.AvailabilityZone, nil
