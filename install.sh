@@ -26,18 +26,29 @@ if [ "$OS" = "Windows" ]; then
     EXT="zip"
 fi
 
-LATEST=$(curl -s https://api.github.com/repos/$REPO/releases/latest | grep tag_name | cut -d '"' -f 4)
+LATEST=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep tag_name | cut -d '"' -f 4)
 if [ -z "$LATEST" ]; then
     echo "Could not fetch latest release tag."; exit 1
 fi
 
 ASSET="${BINARY}_${OS}_${ARCH}.${EXT}"
-URL="https://github.com/$REPO/releases/download/$LATEST/$ASSET"
+BASE_URL="https://github.com/$REPO/releases/download/$LATEST"
 
 TMP_DIR=$(mktemp -d)
 cd "$TMP_DIR"
 
-curl -LO "$URL"
+echo "Downloading $BINARY $LATEST..."
+curl -fsSL -o "$ASSET" "$BASE_URL/$ASSET"
+curl -fsSL -o "checksums.txt" "$BASE_URL/checksums.txt"
+
+echo "Verifying checksum..."
+if command -v sha256sum >/dev/null 2>&1; then
+    grep "$ASSET" checksums.txt | sha256sum -c --status
+elif command -v shasum >/dev/null 2>&1; then
+    grep "$ASSET" checksums.txt | shasum -a 256 -c --status
+else
+    echo "Warning: no sha256sum or shasum found — skipping verification"
+fi
 
 if [ "$EXT" = "tar.gz" ]; then
     tar -xzf "$ASSET"

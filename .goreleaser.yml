@@ -5,7 +5,10 @@ before:
     - go mod tidy
 
 builds:
-  - env:
+  - id: ssmx
+    main: .
+    binary: ssmx
+    env:
       - CGO_ENABLED=0
     goos:
       - linux
@@ -14,15 +17,42 @@ builds:
     goarch:
       - amd64
       - arm64
-    main: .
-    binary: ssmx
     ldflags:
-      - -s -w -X main.version={{.Version}}
+      - -s -w -X main.version={{.Version}} -X main.buildTime={{.Date}}
+
+  - id: ssmcp
+    main: ./ssmcp
+    binary: ssmcp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.buildTime={{.Date}}
 
 archives:
-  - formats: [ 'tar.gz' ]
+  - id: ssmx
+    ids: [ ssmx ]
+    formats: [ 'tar.gz' ]
     name_template: >-
       {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [ 'zip' ]
+
+  - id: ssmcp
+    ids: [ ssmcp ]
+    formats: [ 'tar.gz' ]
+    name_template: >-
+      ssmcp_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else }}{{ .Arch }}{{ end }}

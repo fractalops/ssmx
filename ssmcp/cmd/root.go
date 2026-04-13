@@ -223,7 +223,12 @@ func parseEndpoint(s string) (host, path string, remote bool) {
 }
 
 // Execute is the entry point called from ssmcp/main.go.
-func Execute() {
+func Execute(version, buildTime string) {
+	rootCmd.Version = version
+	if buildTime != "" {
+		rootCmd.SetVersionTemplate("ssmcp " + version + " (built " + buildTime + ")\n")
+	}
+
 	if err := rootCmd.Execute(); err != nil {
 		var offline *errOffline
 		if errors.As(err, &offline) {
