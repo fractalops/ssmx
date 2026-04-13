@@ -49,7 +49,7 @@ func installDarwin(ctx context.Context) error {
 	// Try brew to download the cask.
 	if brewPath, err := exec.LookPath("brew"); err == nil {
 		fmt.Print("  Using Homebrew... ")
-		cmd := exec.CommandContext(ctx, brewPath, "install", "session-manager-plugin") //nolint:gosec // installer args are controlled by this binary, not user input
+		cmd := exec.CommandContext(ctx, brewPath, "install", "session-manager-plugin")
 		cmd.Env = append(os.Environ(), "HOMEBREW_NO_AUTO_UPDATE=1")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -113,7 +113,7 @@ func openPkgInstaller(ctx context.Context, pkgPath string) error {
 	)
 
 	// Remove quarantine so Gatekeeper doesn't block the pkg.
-	_ = exec.CommandContext(ctx, "xattr", "-d", "com.apple.quarantine", pkgPath).Run() //nolint:gosec // installer args are controlled by this binary, not user input
+	_ = exec.CommandContext(ctx, "xattr", "-d", "com.apple.quarantine", pkgPath).Run()
 
 	fmt.Println()
 	fmt.Println("  session-manager-plugin is an AWS tool ssmx uses to open secure")
@@ -124,7 +124,7 @@ func openPkgInstaller(ctx context.Context, pkgPath string) error {
 		`do shell script "installer -pkg %s -target / && ln -sf %s %s" with administrator privileges`,
 		pkgPath, pluginBin, pluginLink,
 	)
-	cmd := exec.CommandContext(ctx, "osascript", "-e", script) //nolint:gosec // installer args are controlled by this binary, not user input
+	cmd := exec.CommandContext(ctx, "osascript", "-e", script)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if strings.Contains(string(out), "User cancelled") {
 			return fmt.Errorf("installation cancelled")
@@ -158,7 +158,7 @@ func ensurePluginOnPath() error {
 }
 
 func downloadFile(ctx context.Context, url, dest string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil) //nolint:gosec // URL is a hardcoded AWS S3 path
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("creating request for %s: %w", url, err)
 	}

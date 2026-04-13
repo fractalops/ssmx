@@ -16,7 +16,7 @@ import (
 func Run(ctx context.Context, profile, region string) error {
 	// 1. AWS credentials.
 	if _, err := awsclient.NewConfig(ctx, profile, region); err != nil {
-		return fmt.Errorf("%w\n\nRun `aws configure` to set up credentials.", err)
+		return fmt.Errorf("%w\n\nRun `aws configure` to set up credentials", err)
 	}
 	fmt.Println(tui.StyleSuccess.Render("ok") + "  AWS credentials configured")
 
