@@ -49,7 +49,7 @@ func runList(cmd *cobra.Command) error {
 	cached, err := state.GetCachedInstances(ctx, db, profile, region)
 	var instances []awsclient.Instance
 
-	if err == nil && len(cached) > 0 {
+	if err == nil && len(cached) > 0 && len(lsFlagTags) == 0 {
 		for _, c := range cached {
 			instances = append(instances, awsclient.Instance{
 				InstanceID:       c.InstanceID,

@@ -74,7 +74,7 @@ func runExec(cmd *cobra.Command, target string, remoteCmd []string) error {
 
 	command := strings.Join(remoteCmd, " ")
 
-	fmt.Printf("%s  Running on %s (%s)...\n",
+	fmt.Fprintf(os.Stderr, "%s  Running on %s (%s)...\n",
 		tui.StyleSuccess.Render("→"),
 		tui.StyleBold.Render(nameOrID(inst)),
 		inst.InstanceID,
@@ -141,7 +141,7 @@ func runConnect(cmd *cobra.Command, args []string) error {
 		return &errOffline{target}
 	}
 
-	fmt.Printf("%s  Connecting to %s (%s)...\n",
+	fmt.Fprintf(os.Stderr, "%s  Connecting to %s (%s)...\n",
 		tui.StyleSuccess.Render("→"),
 		tui.StyleBold.Render(nameOrID(target)),
 		target.InstanceID,
@@ -245,7 +245,7 @@ func postSessionBookmark(inst *awsclient.Instance, cfg *config.Config) error {
 		return err
 	}
 
-	fmt.Println()
-	fmt.Printf("%s  Bookmarked as %s\n", tui.StyleSuccess.Render("✓"), tui.StyleBold.Render(name))
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintf(os.Stderr, "%s  Bookmarked as %s\n", tui.StyleSuccess.Render("✓"), tui.StyleBold.Render(name))
 	return nil
 }
