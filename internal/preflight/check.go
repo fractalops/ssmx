@@ -17,19 +17,30 @@ import (
 // Success states are silent — only warnings and errors are printed.
 func Run(ctx context.Context, profile, region string) error {
 	// 1. AWS credentials.
-	if _, err := awsclient.NewConfig(ctx, profile, region); err != nil {
+	awsCfg, err := awsclient.NewConfig(ctx, profile, region)
+	if err != nil {
 		return fmt.Errorf("%w\n\nRun `aws configure` to set up credentials", err)
 	}
 
-	// 2. Region — warn if unset, but don't block.
-	if region == "" {
-		cfg, _ := config.Load()
-		if cfg != nil {
-			region = cfg.DefaultRegion
+	// 2. Region — resolved from flag, ~/.aws/config, AWS_DEFAULT_REGION, or ~/.ssmx/config.yaml.
+	// Only prompt when no source provides one.
+	if awsCfg.Region == "" {
+		if ssmxCfg, _ := config.Load(); ssmxCfg != nil && ssmxCfg.DefaultRegion != "" {
+			awsCfg.Region = ssmxCfg.DefaultRegion
 		}
 	}
-	if region == "" {
-		fmt.Fprintln(os.Stderr, tui.StyleWarning.Render("!")+"  No default region set (use -r or set default_region in ~/.ssmx/config.yaml)")
+	if awsCfg.Region == "" {
+		var defaultRegion string
+		if err := huh.NewInput().
+			Title("No AWS region found — enter a default to save (or leave blank to skip)").
+			Placeholder("us-east-1").
+			Value(&defaultRegion).
+			Run(); err == nil && defaultRegion != "" {
+			if ssmxCfg, lerr := config.Load(); lerr == nil {
+				ssmxCfg.DefaultRegion = defaultRegion
+				_ = config.Save(ssmxCfg)
+			}
+		}
 	}
 
 	// 3. Session Manager plugin.

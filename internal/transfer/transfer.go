@@ -374,8 +374,20 @@ func CopyRemoteToRemote(ctx context.Context, srcInstanceID, srcPath, dstInstance
 	}
 	defer func() { _ = dstSession.Close() }()
 
+	// Best-effort: stat the source file via SFTP to get its size for the
+	// progress bar. Failures are silently ignored — we just get an
+	// indeterminate bar instead of a percentage one.
+	var srcSize int64
+	if sftpSrc, err := sftp.NewClient(srcClient); err == nil {
+		if info, err := sftpSrc.Stat(srcPath); err == nil {
+			srcSize = info.Size()
+		}
+		_ = sftpSrc.Close()
+	}
+
 	pr, pipeW := io.Pipe()
 	progW := newProgressWriter(pipeW, path.Base(srcPath))
+	progW.pt.total = srcSize
 	srcSession.Stdout = progW
 	srcSession.Stderr = os.Stderr
 	dstSession.Stdin = pr

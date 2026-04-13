@@ -152,3 +152,111 @@ func TestCopyRemoteToRemote_FailsWithBadKey(t *testing.T) {
 		t.Error("expected error for missing key, got nil")
 	}
 }
+
+// TestShellQuote verifies safe quoting of paths for remote shell commands.
+func TestShellQuote(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"simple", "'simple'"},
+		{"/path/to/file", "'/path/to/file'"},
+		{"has space", "'has space'"},
+		{"it's here", "'it'\\''s here'"},
+		{"quote'inside'path", "'quote'\\''inside'\\''path'"},
+	}
+	for _, c := range cases {
+		if got := shellQuote(c.in); got != c.want {
+			t.Errorf("shellQuote(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestUpload_DirectoryWithoutRecursive verifies that uploading a directory
+// without -r returns an error rather than silently succeeding or panicking.
+func TestUpload_DirectoryWithoutRecursive(t *testing.T) {
+	dir := t.TempDir()
+	// upload with a nil sftp client is fine — the directory check happens first.
+	err := upload(nil, dir, "/remote/path", false)
+	if err == nil {
+		t.Fatal("expected error when uploading directory without recursive flag")
+	}
+}
+
+// TestDownloadDir_CreatesLocalTree verifies that downloadDir reconstructs the
+// remote directory structure locally. It uses an in-process sftp server so no
+// real SSH connection is required.
+func TestUploadDir_CreatesRemoteTree(t *testing.T) {
+	// Build a local source tree.
+	src := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(src, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"root.txt":       "root content",
+		"sub/nested.txt": "nested content",
+	}
+	for rel, data := range files {
+		if err := os.WriteFile(filepath.Join(src, rel), []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Build an in-process sftp server (uses real OS filesystem).
+	remote := t.TempDir()
+	sftpClient := newInProcSFTPClient(t)
+
+	if err := uploadDir(sftpClient, src, remote+"/dst"); err != nil {
+		t.Fatalf("uploadDir: %v", err)
+	}
+
+	// Verify each file landed at the expected remote path.
+	for rel, want := range files {
+		p := filepath.Join(remote, "dst", rel)
+		got, err := os.ReadFile(p)
+		if err != nil {
+			t.Errorf("remote file %s not found: %v", p, err)
+			continue
+		}
+		if string(got) != want {
+			t.Errorf("remote file %s = %q, want %q", p, got, want)
+		}
+	}
+}
+
+// TestDownloadDir_CreatesLocalTree mirrors TestUploadDir using downloadDir.
+func TestDownloadDir_CreatesLocalTree(t *testing.T) {
+	// Build a remote source tree inside a temp dir backed by in-proc sftp.
+	remote := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(remote, "src", "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"src/a.txt":     "alpha",
+		"src/sub/b.txt": "beta",
+	}
+	for rel, data := range files {
+		if err := os.WriteFile(filepath.Join(remote, rel), []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	sftpClient := newInProcSFTPClient(t)
+
+	local := t.TempDir()
+	if err := downloadDir(sftpClient, remote+"/src", local); err != nil {
+		t.Fatalf("downloadDir: %v", err)
+	}
+
+	for rel, want := range files {
+		// rel is "src/a.txt" — downloadDir strips the remote base ("src") prefix.
+		localPath := filepath.Join(local, filepath.FromSlash(rel[len("src/"):]))
+		got, err := os.ReadFile(localPath)
+		if err != nil {
+			t.Errorf("local file %s not found: %v", localPath, err)
+			continue
+		}
+		if string(got) != want {
+			t.Errorf("local file %s = %q, want %q", localPath, got, want)
+		}
+	}
+}
