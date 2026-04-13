@@ -3,6 +3,7 @@ package transfer
 import (
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"time"
 
@@ -61,8 +62,12 @@ func (p *progressTracker) render() {
 			formatBytes(p.bytes), formatBytes(p.total),
 			formatBytes(speed))
 	} else {
-		fmt.Fprintf(os.Stderr, "\r  %-24s  %s  %s/s   ",
-			name, formatBytes(p.bytes), formatBytes(speed))
+		// Unknown total — oscillate the bar so it shows activity.
+		secs := time.Since(p.start).Seconds()
+		pulse := 0.5 + 0.45*math.Sin(secs*math.Pi*0.8)
+		fmt.Fprintf(os.Stderr, "\r  %-24s  %s  %s  %s/s   ",
+			name, p.bar.ViewAs(pulse),
+			formatBytes(p.bytes), formatBytes(speed))
 	}
 }
 

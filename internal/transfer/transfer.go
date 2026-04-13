@@ -383,9 +383,9 @@ func CopyRemoteToRemote(ctx context.Context, srcInstanceID, srcPath, dstInstance
 	// -C changes to the parent dir so the archive contains only the base name.
 	// On the destination we extract into path.Dir(dstPath) so the file lands at
 	// dstPath (not inside a directory named after the file).
-	srcCmd := fmt.Sprintf("tar czf - -C %s %s", shellQuote(path.Dir(srcPath)), shellQuote(path.Base(srcPath)))
+	srcCmd := fmt.Sprintf("tar cf - -C %s %s", shellQuote(path.Dir(srcPath)), shellQuote(path.Base(srcPath)))
 	dstDir := path.Dir(dstPath)
-	dstCmd := fmt.Sprintf("mkdir -p %s && tar xzf - -C %s", shellQuote(dstDir), shellQuote(dstDir))
+	dstCmd := fmt.Sprintf("mkdir -p %s && tar xf - -C %s", shellQuote(dstDir), shellQuote(dstDir))
 
 	g, gctx := errgroup.WithContext(ctx)
 
