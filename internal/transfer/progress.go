@@ -86,7 +86,9 @@ func (p *progressTracker) Done() {
 	if p.total == 0 {
 		bar = ""
 	}
-	fmt.Fprintf(os.Stderr, "\r  %-24s  %s  %s  done  (%s, avg %s/s)\n",
+	// \033[2K clears the current line before printing, preventing leftover
+	// characters from the previous render (which may be longer) from bleeding through.
+	fmt.Fprintf(os.Stderr, "\r\033[2K  %-24s  %s  %s  done  (%s, avg %s/s)\n",
 		truncateName(p.name, 24), bar,
 		formatBytes(p.bytes), elapsed.Round(time.Millisecond), formatBytes(avgSpeed))
 }
