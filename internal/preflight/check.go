@@ -14,29 +14,26 @@ import (
 
 // Run performs all first-run checks and interactively resolves any failures.
 // Returns an error only if a check failure cannot be resolved.
+// Success states are silent — only warnings and errors are printed.
 func Run(ctx context.Context, profile, region string) error {
 	// 1. AWS credentials.
 	if _, err := awsclient.NewConfig(ctx, profile, region); err != nil {
 		return fmt.Errorf("%w\n\nRun `aws configure` to set up credentials", err)
 	}
-	fmt.Fprintln(os.Stderr, tui.StyleSuccess.Render("ok")+"  AWS credentials configured")
 
-	// 2. Region.
+	// 2. Region — warn if unset, but don't block.
 	if region == "" {
 		cfg, _ := config.Load()
 		if cfg != nil {
 			region = cfg.DefaultRegion
 		}
 	}
-	if region != "" {
-		fmt.Fprintf(os.Stderr, "%s  Region: %s\n", tui.StyleSuccess.Render("ok"), region)
-	} else {
-		fmt.Fprintln(os.Stderr, tui.StyleWarning.Render("?")+"  No default region set (use -r or set default_region in ~/.ssmx/config.yaml)")
+	if region == "" {
+		fmt.Fprintln(os.Stderr, tui.StyleWarning.Render("!")+"  No default region set (use -r or set default_region in ~/.ssmx/config.yaml)")
 	}
 
 	// 3. Session Manager plugin.
 	if PluginInstalled() {
-		fmt.Fprintln(os.Stderr, tui.StyleSuccess.Render("ok")+"  Session Manager plugin installed")
 		return nil
 	}
 
