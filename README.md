@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/fractalops/ssmx)](https://github.com/fractalops/ssmx/releases)
 
-Is a utility that aims to simplify aws ssm operations and user experience
+A utility that aims to simplify aws ssm operations and user experience
 
 
 ## Features
