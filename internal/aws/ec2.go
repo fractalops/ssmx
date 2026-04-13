@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -42,7 +43,7 @@ func ListInstances(ctx context.Context, cfg aws.Config, tagFilters []string) ([]
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("listing EC2 instances: %w", err)
 		}
 		for _, reservation := range page.Reservations {
 			for _, i := range reservation.Instances {

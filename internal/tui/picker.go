@@ -49,7 +49,7 @@ func RunPicker(instances []awsclient.Instance) (*awsclient.Instance, error) {
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	final, err := p.Run()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("running instance picker: %w", err)
 	}
 	return final.(PickerModel).result.Instance, nil
 }

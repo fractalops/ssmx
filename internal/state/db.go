@@ -15,7 +15,7 @@ import (
 func Open() (*sql.DB, error) {
 	dir, err := config.Dir()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolving config dir: %w", err)
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("creating state dir: %w", err)
@@ -35,7 +35,7 @@ func Open() (*sql.DB, error) {
 }
 
 func migrate(db *sql.DB) error {
-	_, err := db.Exec(`
+	_, execErr := db.Exec(`
 		CREATE TABLE IF NOT EXISTS instance_cache (
 			instance_id   TEXT PRIMARY KEY,
 			name          TEXT NOT NULL DEFAULT '',
@@ -69,8 +69,8 @@ func migrate(db *sql.DB) error {
 			created_at   INTEGER NOT NULL
 		);
 	`)
-	if err != nil {
-		return err
+	if execErr != nil {
+		return fmt.Errorf("running migrations: %w", execErr)
 	}
 	// Add platform_name to existing installations that predate this column.
 	if err := addColumnIfMissing(db, "instance_cache", "platform_name", "TEXT NOT NULL DEFAULT ''"); err != nil {
@@ -82,7 +82,7 @@ func migrate(db *sql.DB) error {
 func addColumnIfMissing(db *sql.DB, table, column, def string) error {
 	rows, err := db.Query("PRAGMA table_info(" + table + ")")
 	if err != nil {
-		return err
+		return fmt.Errorf("querying table_info for %s: %w", table, err)
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -92,15 +92,17 @@ func addColumnIfMissing(db *sql.DB, table, column, def string) error {
 		var dflt sql.NullString
 		var pk int
 		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
-			return err
+			return fmt.Errorf("scanning table_info row for %s: %w", table, err)
 		}
 		if name == column {
 			return nil // already present
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return err
+		return fmt.Errorf("iterating table_info rows for %s: %w", table, err)
 	}
-	_, err = db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + def)
-	return err
+	if _, err := db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + def); err != nil {
+		return fmt.Errorf("adding column %s to %s: %w", column, table, err)
+	}
+	return nil
 }

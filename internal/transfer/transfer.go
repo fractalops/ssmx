@@ -45,8 +45,8 @@ type proxyConn struct {
 	cmd    *exec.Cmd
 }
 
-func (p *proxyConn) Read(b []byte) (int, error)  { return p.stdout.Read(b) }
-func (p *proxyConn) Write(b []byte) (int, error) { return p.stdin.Write(b) }
+func (p *proxyConn) Read(b []byte) (int, error)  { return p.stdout.Read(b) }  //nolint:wrapcheck // net.Conn interface forwarder — must return error as-is
+func (p *proxyConn) Write(b []byte) (int, error) { return p.stdin.Write(b) } //nolint:wrapcheck // net.Conn interface forwarder — must return error as-is
 
 func (p *proxyConn) Close() error {
 	_ = p.stdin.Close()
@@ -104,12 +104,12 @@ func dialProxy(ctx context.Context, instanceID, user, profile, region string) (n
 	cmd := exec.CommandContext(ctx, ssmxPath, args...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening proxy stdin pipe: %w", err)
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		_ = stdin.Close()
-		return nil, err
+		return nil, fmt.Errorf("opening proxy stdout pipe: %w", err)
 	}
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
@@ -144,19 +144,19 @@ func Copy(ctx context.Context, instanceID string, spec CopySpec) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	sshClient, err := dialSSH(conn, instanceID, spec.User, signer)
 	if err != nil {
 		return err
 	}
-	defer sshClient.Close()
+	defer func() { _ = sshClient.Close() }()
 
 	sftpClient, err := sftp.NewClient(sshClient)
 	if err != nil {
 		return fmt.Errorf("SFTP client: %w", err)
 	}
-	defer sftpClient.Close()
+	defer func() { _ = sftpClient.Close() }()
 
 	type result struct{ err error }
 	ch := make(chan result, 1)
@@ -174,7 +174,7 @@ func Copy(ctx context.Context, instanceID string, spec CopySpec) error {
 	case r := <-ch:
 		return r.err
 	case <-ctx.Done():
-		return ctx.Err()
+		return ctx.Err() //nolint:wrapcheck // context sentinel errors must not be double-wrapped
 	}
 }
 
@@ -182,7 +182,7 @@ func Copy(ctx context.Context, instanceID string, spec CopySpec) error {
 func upload(client *sftp.Client, localPath, remotePath string, recursive bool) error {
 	info, err := os.Stat(localPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("stat %s: %w", localPath, err)
 	}
 	if info.IsDir() {
 		if !recursive {
@@ -202,7 +202,7 @@ func uploadFile(client *sftp.Client, localPath, remotePath string) error {
 	}
 	src, err := os.Open(localPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("opening local file %s: %w", localPath, err)
 	}
 	defer func() { _ = src.Close() }()
 	dst, err := client.Create(remotePath)
@@ -211,17 +211,20 @@ func uploadFile(client *sftp.Client, localPath, remotePath string) error {
 	}
 	defer func() { _ = dst.Close() }()
 	_, err = io.Copy(dst, src)
-	return err
+	if err != nil {
+		return fmt.Errorf("copying %s to remote %s: %w", localPath, remotePath, err)
+	}
+	return nil
 }
 
 func uploadDir(client *sftp.Client, localDir, remoteDir string) error {
 	return filepath.Walk(localDir, func(localPath string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("walking %s: %w", localPath, err)
 		}
 		rel, err := filepath.Rel(localDir, localPath)
 		if err != nil {
-			return err
+			return fmt.Errorf("computing relative path for %s: %w", localPath, err)
 		}
 		remotePath := remoteDir + "/" + filepath.ToSlash(rel)
 		if info.IsDir() {
@@ -235,7 +238,7 @@ func uploadDir(client *sftp.Client, localDir, remoteDir string) error {
 func download(client *sftp.Client, remotePath, localPath string, recursive bool) error {
 	info, err := client.Stat(remotePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("stat remote %s: %w", remotePath, err)
 	}
 	if info.IsDir() {
 		if !recursive {
@@ -250,8 +253,8 @@ func downloadFile(client *sftp.Client, remotePath, localPath string) error {
 	if strings.HasSuffix(localPath, "/") || isLocalDir(localPath) {
 		localPath = filepath.Join(localPath, path.Base(remotePath))
 	}
-	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
-		return err
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o750); err != nil {
+		return fmt.Errorf("creating local dir for %s: %w", localPath, err)
 	}
 	src, err := client.Open(remotePath)
 	if err != nil {
@@ -260,18 +263,21 @@ func downloadFile(client *sftp.Client, remotePath, localPath string) error {
 	defer func() { _ = src.Close() }()
 	dst, err := os.Create(localPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating local file %s: %w", localPath, err)
 	}
 	defer func() { _ = dst.Close() }()
 	_, err = io.Copy(dst, src)
-	return err
+	if err != nil {
+		return fmt.Errorf("copying remote %s to %s: %w", remotePath, localPath, err)
+	}
+	return nil
 }
 
 func downloadDir(client *sftp.Client, remoteDir, localDir string) error {
 	walker := client.Walk(remoteDir)
 	for walker.Step() {
 		if err := walker.Err(); err != nil {
-			return err
+			return fmt.Errorf("walking remote dir %s: %w", remoteDir, err)
 		}
 		rel, relErr := filepath.Rel(remoteDir, walker.Path())
 		if relErr != nil {
@@ -279,8 +285,8 @@ func downloadDir(client *sftp.Client, remoteDir, localDir string) error {
 		}
 		target := filepath.Join(localDir, filepath.FromSlash(rel))
 		if walker.Stat().IsDir() {
-			if err := os.MkdirAll(target, 0o755); err != nil {
-				return err
+			if err := os.MkdirAll(target, 0o750); err != nil {
+				return fmt.Errorf("creating local dir %s: %w", target, err)
 			}
 		} else {
 			if err := downloadFile(client, walker.Path(), target); err != nil {
@@ -313,25 +319,25 @@ func CopyRemoteToRemote(ctx context.Context, srcInstanceID, srcPath, dstInstance
 	if err != nil {
 		return fmt.Errorf("connecting to source %s: %w", srcInstanceID, err)
 	}
-	defer srcConn.Close()
+	defer func() { _ = srcConn.Close() }()
 
 	dstConn, err := dialProxy(ctx, dstInstanceID, spec.User, spec.Profile, spec.Region)
 	if err != nil {
 		return fmt.Errorf("connecting to destination %s: %w", dstInstanceID, err)
 	}
-	defer dstConn.Close()
+	defer func() { _ = dstConn.Close() }()
 
 	srcClient, err := dialSSH(srcConn, srcInstanceID, spec.User, signer)
 	if err != nil {
 		return err
 	}
-	defer srcClient.Close()
+	defer func() { _ = srcClient.Close() }()
 
 	dstClient, err := dialSSH(dstConn, dstInstanceID, spec.User, signer)
 	if err != nil {
 		return err
 	}
-	defer dstClient.Close()
+	defer func() { _ = dstClient.Close() }()
 
 	srcSession, err := srcClient.NewSession()
 	if err != nil {
@@ -382,7 +388,7 @@ func CopyRemoteToRemote(ctx context.Context, srcInstanceID, srcPath, dstInstance
 		_ = dstClient.Close()
 	}()
 
-	return g.Wait()
+	return g.Wait() //nolint:wrapcheck // errgroup collects already-wrapped goroutine errors
 }
 
 // shellQuote wraps a path in single quotes for safe use in remote shell commands.

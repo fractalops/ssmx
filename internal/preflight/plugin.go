@@ -159,7 +159,7 @@ func ensurePluginOnPath() error {
 func downloadFile(url, dest string) error {
 	resp, err := http.Get(url) //nolint:gosec // URL is a hardcoded AWS S3 path
 	if err != nil {
-		return err
+		return fmt.Errorf("downloading %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
@@ -169,12 +169,14 @@ func downloadFile(url, dest string) error {
 
 	f, err := os.Create(dest)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating download destination %s: %w", dest, err)
 	}
 	defer f.Close()
 
-	_, err = io.Copy(f, resp.Body)
-	return err
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		return fmt.Errorf("writing download to %s: %w", dest, err)
+	}
+	return nil
 }
 
 func installLinux() error {

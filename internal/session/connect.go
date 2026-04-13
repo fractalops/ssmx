@@ -57,7 +57,10 @@ func Connect(ctx context.Context, cfg aws.Config, instanceID, region, profile st
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("session-manager-plugin: %w", err)
+	}
+	return nil
 }
 
 // Exec starts a non-interactive SSM session that runs command on instanceID,
@@ -104,7 +107,10 @@ func Exec(ctx context.Context, cfg aws.Config, instanceID, region, profile, comm
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("session-manager-plugin exec: %w", err)
+	}
+	return nil
 }
 
 // ForwardSpec describes a single port-forwarding rule.
@@ -197,7 +203,10 @@ func Forward(ctx context.Context, cfg aws.Config, instanceID, region, profile st
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("session-manager-plugin forward: %w", err)
+	}
+	return nil
 }
 
 // SSHProxy starts an AWS-StartSSHSession over session-manager-plugin, piping
@@ -240,5 +249,8 @@ func SSHProxy(ctx context.Context, cfg aws.Config, instanceID, region, profile s
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("session-manager-plugin ssh proxy: %w", err)
+	}
+	return nil
 }

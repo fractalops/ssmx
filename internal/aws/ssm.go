@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
@@ -26,7 +27,7 @@ func ListManagedInstances(ctx context.Context, cfg aws.Config) (map[string]SSMIn
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("listing SSM managed instances: %w", err)
 		}
 		for _, info := range page.InstanceInformationList {
 			id := aws.ToString(info.InstanceId)
@@ -66,38 +67,50 @@ func MergeSSMInfo(instances []Instance, ssmInfo map[string]SSMInfo) {
 // raw response needed by session-manager-plugin.
 func StartSession(ctx context.Context, cfg aws.Config, instanceID string) (*ssm.StartSessionOutput, error) {
 	client := ssm.NewFromConfig(cfg)
-	return client.StartSession(ctx, &ssm.StartSessionInput{
+	out, err := client.StartSession(ctx, &ssm.StartSessionInput{
 		Target: aws.String(instanceID),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("SSM StartSession for %s: %w", instanceID, err)
+	}
+	return out, nil
 }
 
 // StartInteractiveCommand starts an SSM session using AWS-StartInteractiveCommand,
 // which runs command on the target instance and streams output back through the plugin.
 func StartInteractiveCommand(ctx context.Context, cfg aws.Config, instanceID, command string) (*ssm.StartSessionOutput, error) {
 	client := ssm.NewFromConfig(cfg)
-	return client.StartSession(ctx, &ssm.StartSessionInput{
+	out, err := client.StartSession(ctx, &ssm.StartSessionInput{
 		Target:       aws.String(instanceID),
 		DocumentName: aws.String("AWS-StartInteractiveCommand"),
 		Parameters:   map[string][]string{"command": {command}},
 	})
+	if err != nil {
+		return nil, fmt.Errorf("SSM StartInteractiveCommand for %s: %w", instanceID, err)
+	}
+	return out, nil
 }
 
 // StartSSHSession opens an SSM session using AWS-StartSSHSession, which
 // bridges the SSM data channel to the instance's SSH port.
 func StartSSHSession(ctx context.Context, cfg aws.Config, instanceID string) (*ssm.StartSessionOutput, error) {
 	client := ssm.NewFromConfig(cfg)
-	return client.StartSession(ctx, &ssm.StartSessionInput{
+	out, err := client.StartSession(ctx, &ssm.StartSessionInput{
 		Target:       aws.String(instanceID),
 		DocumentName: aws.String("AWS-StartSSHSession"),
 		Parameters:   map[string][]string{"portNumber": {"22"}},
 	})
+	if err != nil {
+		return nil, fmt.Errorf("SSM StartSSHSession for %s: %w", instanceID, err)
+	}
+	return out, nil
 }
 
 // StartPortForwardingSession opens a native SSM port forward from
 // localPort on the client to remotePort on the instance (localhost).
 func StartPortForwardingSession(ctx context.Context, cfg aws.Config, instanceID, localPort, remotePort string) (*ssm.StartSessionOutput, error) {
 	client := ssm.NewFromConfig(cfg)
-	return client.StartSession(ctx, &ssm.StartSessionInput{
+	out, err := client.StartSession(ctx, &ssm.StartSessionInput{
 		Target:       aws.String(instanceID),
 		DocumentName: aws.String("AWS-StartPortForwardingSession"),
 		Parameters: map[string][]string{
@@ -105,6 +118,10 @@ func StartPortForwardingSession(ctx context.Context, cfg aws.Config, instanceID,
 			"localPortNumber": {localPort},
 		},
 	})
+	if err != nil {
+		return nil, fmt.Errorf("SSM StartPortForwardingSession for %s: %w", instanceID, err)
+	}
+	return out, nil
 }
 
 // StartPortForwardingSessionToRemoteHost opens a native SSM port forward
@@ -112,7 +129,7 @@ func StartPortForwardingSession(ctx context.Context, cfg aws.Config, instanceID,
 // the instance).
 func StartPortForwardingSessionToRemoteHost(ctx context.Context, cfg aws.Config, instanceID, localPort, remoteHost, remotePort string) (*ssm.StartSessionOutput, error) {
 	client := ssm.NewFromConfig(cfg)
-	return client.StartSession(ctx, &ssm.StartSessionInput{
+	out, err := client.StartSession(ctx, &ssm.StartSessionInput{
 		Target:       aws.String(instanceID),
 		DocumentName: aws.String("AWS-StartPortForwardingSessionToRemoteHost"),
 		Parameters: map[string][]string{
@@ -121,4 +138,8 @@ func StartPortForwardingSessionToRemoteHost(ctx context.Context, cfg aws.Config,
 			"localPortNumber": {localPort},
 		},
 	})
+	if err != nil {
+		return nil, fmt.Errorf("SSM StartPortForwardingSessionToRemoteHost for %s: %w", instanceID, err)
+	}
+	return out, nil
 }

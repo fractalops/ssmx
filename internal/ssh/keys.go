@@ -52,7 +52,7 @@ func LoadOrGenerateKey(keyPath string) (pubKey string, resolvedPath string, err 
 	if keyPath == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "", "", err
+			return "", "", fmt.Errorf("resolving home directory: %w", err)
 		}
 		keyPath = filepath.Join(home, ".ssmx", "ssh_key")
 	}

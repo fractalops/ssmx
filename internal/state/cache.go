@@ -2,6 +2,7 @@ package state
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 )
 
@@ -34,7 +35,7 @@ func GetCachedInstances(db *sql.DB, profile, region string) ([]CachedInstance, e
 		ORDER BY name ASC
 	`, profile, region, cutoff)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("querying instance cache: %w", err)
 	}
 	defer rows.Close()
 
@@ -47,21 +48,24 @@ func GetCachedInstances(db *sql.DB, profile, region string) ([]CachedInstance, e
 			&inst.PrivateIP, &inst.AgentVersion, &inst.Region, &inst.Profile,
 			&cachedAtUnix, &inst.PlatformName, &inst.AvailabilityZone,
 		); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scanning cached instance row: %w", err)
 		}
 		inst.CachedAt = time.Unix(cachedAtUnix, 0)
 		instances = append(instances, inst)
 	}
-	return instances, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating cached instance rows: %w", err)
+	}
+	return instances, nil
 }
 
 // UpsertInstances replaces the cached instance list for a profile+region.
 func UpsertInstances(db *sql.DB, instances []CachedInstance) error {
 	tx, err := db.Begin()
 	if err != nil {
-		return err
+		return fmt.Errorf("beginning upsert transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 
 	stmt, err := tx.Prepare(`
 		INSERT INTO instance_cache
@@ -75,7 +79,7 @@ func UpsertInstances(db *sql.DB, instances []CachedInstance) error {
 			platform_name=excluded.platform_name, availability_zone=excluded.availability_zone
 	`)
 	if err != nil {
-		return err
+		return fmt.Errorf("preparing upsert statement: %w", err)
 	}
 	defer stmt.Close()
 
@@ -86,8 +90,11 @@ func UpsertInstances(db *sql.DB, instances []CachedInstance) error {
 			inst.PrivateIP, inst.AgentVersion, inst.Region, inst.Profile,
 			now, inst.PlatformName, inst.AvailabilityZone,
 		); err != nil {
-			return err
+			return fmt.Errorf("upserting instance %s: %w", inst.InstanceID, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing upsert transaction: %w", err)
+	}
+	return nil
 }
