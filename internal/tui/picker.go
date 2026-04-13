@@ -31,7 +31,7 @@ type PickerModel struct {
 // NewPickerModel creates a PickerModel populated with the given instances.
 func NewPickerModel(instances []awsclient.Instance) PickerModel {
 	ti := textinput.New()
-	ti.Placeholder = "fuzzy search..."
+	ti.Placeholder = "type to search..."
 	ti.Focus()
 	ti.CharLimit = 64
 	ti.Width = 40

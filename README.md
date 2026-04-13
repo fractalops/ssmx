@@ -5,20 +5,20 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/fractalops/ssmx)](https://github.com/fractalops/ssmx/releases)
 
-A utility to simplify aws ssm operations 
+Is a utility that aims to simplify aws ssm operations and user experience
 
 
 ## Features
 
-- **Interactive TUI:** fuzzy-search instance picker with SSM health status
+- **Interactive TUI:** fuzzy-search instance picker
 - **exec:** `ssmx web-prod -- df -h` streams output live, exit codes propagate
-- **Bookmarking:** saves instances you connect to for fast re-access
+- **Bookmarking:** saves instances you connect
 - **interactive setup:** detects missing credentials, region, and Session Manager plugin; offers to install
 - **SSH config generation:** `ssmx --configure` → "Generate SSH config" writes ProxyCommand entries to `~/.ssh/config.d/ssmx`
 - **Pipe-friendly:** `ssmx -l --format json` and non-TTY output work cleanly in scripts
 - **Port forwarding:** Simplified intuitive port forwarding
 - **Health diagnostics:** `ssmx <host> --health` streams read-only SSM connectivity checks with pass/warn/error results
-- **File copy:** `ssmcp web-prod:/path ./local` copies files over SSM without open ports (separate `ssmcp` binary)
+- **File copy:** Copy files between, to or from instances over SSM without open ports (separate `ssmcp` binary)
 
 ## Installation
 
@@ -120,7 +120,7 @@ ssmcp -r web-prod:/etc/nginx/ ./nginx-backup/
 ssmcp --profile staging --region us-west-2 ./script.sh web-staging:/tmp/
 ```
 
-`ssmcp` uses the same target resolution as `ssmx` (bookmark → Name tag → instance ID) and requires no open ports: it tunnels `scp` over the SSM SSH session.
+`ssmcp` uses the same target resolution as `ssmx` (bookmark → Name tag → instance ID) and requires no open ports: it tunnels `sftp` over the SSM SSH session.
 
 ### SSH ProxyCommand integration
 
@@ -137,11 +137,6 @@ Writes entries to `~/.ssh/config.d/ssmx` so you can `ssh web-prod` directly thro
   config.yaml    # profiles, aliases/bookmarks, default region
   state.db       # sqlite: instance cache
 ```
-
-## Roadmap
-
-- `ssmx <host> --fix`: diagnose + remediate broken SSM setups (reversible)
-
 
 ## Contributing
 
