@@ -1,6 +1,8 @@
 # Build output
 ssmx
 ssmx-*
+ssmcp/ssmcp
+ssmcp/ssmcp-*
 *.exe
 
 # Test & coverage
