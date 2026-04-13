@@ -1,3 +1,4 @@
+// Package preflight verifies ssmx prerequisites before running commands.
 package preflight
 
 import (
@@ -49,7 +50,7 @@ func Run(ctx context.Context, profile, region string) error {
 	}
 
 	fmt.Print("  Installing... ")
-	if err := InstallPlugin(); err != nil {
+	if err := InstallPlugin(ctx); err != nil {
 		fmt.Println()
 		return fmt.Errorf("install failed: %w", err)
 	}

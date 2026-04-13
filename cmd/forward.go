@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/spf13/cobra"
 	awsclient "github.com/fractalops/ssmx/internal/aws"
 	"github.com/fractalops/ssmx/internal/config"
 	"github.com/fractalops/ssmx/internal/preflight"
 	"github.com/fractalops/ssmx/internal/session"
 	"github.com/fractalops/ssmx/internal/tui"
+	"github.com/spf13/cobra"
 )
 
 // parseForward parses a -L flag value into a ForwardSpec.
@@ -77,7 +77,7 @@ func runForward(cmd *cobra.Command, target string, forwards []session.ForwardSpe
 	region := awsCfg.Region
 	profile := flagProfile
 	if profile == "" {
-		profile = "default"
+		profile = defaultProfile
 	}
 
 	cfg, err := config.Load()
@@ -93,7 +93,7 @@ func runForward(cmd *cobra.Command, target string, forwards []session.ForwardSpe
 		return nil // user cancelled
 	}
 
-	if inst.SSMStatus == "offline" {
+	if inst.SSMStatus == ssmStatusOffline {
 		fmt.Fprintf(os.Stderr, "%s  %s (%s) is not reachable via SSM\n",
 			tui.StyleWarning.Render("!"), inst.Name, inst.InstanceID,
 		)
@@ -142,7 +142,7 @@ func runSingleForward(
 
 		// Clean exit (Ctrl-C or context cancelled) — not a reconnect case.
 		if ctx.Err() != nil {
-			return nil
+			return nil //nolint:nilerr // intentional: context cancellation is a clean exit, not an error
 		}
 
 		if !persist {
@@ -151,7 +151,7 @@ func runSingleForward(
 
 		// --persist: log the drop and wait before reconnecting.
 		// Jitter spreads reconnect storms when multiple forwards drop at once.
-		jitter := time.Duration(rand.Intn(500)) * time.Millisecond
+		jitter := time.Duration(rand.Intn(500)) * time.Millisecond //nolint:gosec // port selection does not require cryptographic randomness
 		fmt.Fprintf(os.Stderr, "  %s  %s dropped — reconnecting in %s\n",
 			tui.StyleWarning.Render("↺"), label, backoff+jitter,
 		)

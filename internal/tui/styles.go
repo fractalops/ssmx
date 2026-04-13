@@ -2,6 +2,7 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
+// Style variables for TUI rendering.
 var (
 	colourOnline   = lipgloss.Color("#00d7af")
 	colourOffline  = lipgloss.Color("#ff5f5f")

@@ -1,3 +1,4 @@
+// Package cmd implements the ssmx CLI commands.
 package cmd
 
 import (
@@ -31,7 +32,7 @@ func runConfigInteractive() error {
 		).
 		Value(&action).
 		Run(); err != nil {
-		return nil // user cancelled
+		return nil //nolint:nilerr // intentional: huh error means user cancelled the prompt
 	}
 
 	switch action {
@@ -43,7 +44,7 @@ func runConfigInteractive() error {
 			Title("Default AWS profile").
 			Value(&cfg.DefaultProfile).
 			Run(); err != nil {
-			return nil
+			return nil //nolint:nilerr // intentional: huh error means user cancelled the prompt
 		}
 		return config.Save(cfg)
 
@@ -53,7 +54,7 @@ func runConfigInteractive() error {
 			Placeholder("us-east-1").
 			Value(&cfg.DefaultRegion).
 			Run(); err != nil {
-			return nil
+			return nil //nolint:nilerr // intentional: huh error means user cancelled the prompt
 		}
 		return config.Save(cfg)
 
@@ -100,21 +101,21 @@ func runManageBookmarks(cfg *config.Config) error {
 		Options(opts...).
 		Value(&selected).
 		Run(); err != nil {
-		return nil
+		return nil //nolint:nilerr // intentional: huh error means user cancelled the prompt
 	}
 
 	instanceID := cfg.Aliases[selected]
 
 	var action string
 	if err := huh.NewSelect[string]().
-		Title(selected + "  →  " + instanceID).
+		Title(selected+"  →  "+instanceID).
 		Options(
 			huh.NewOption("Rename", "rename"),
 			huh.NewOption("Remove", "remove"),
 		).
 		Value(&action).
 		Run(); err != nil {
-		return nil
+		return nil //nolint:nilerr // intentional: huh error means user cancelled the prompt
 	}
 
 	switch action {
@@ -124,7 +125,7 @@ func runManageBookmarks(cfg *config.Config) error {
 			Title("New name").
 			Value(&newName).
 			Run(); err != nil || newName == "" || newName == selected {
-			return nil
+			return nil //nolint:nilerr // intentional: huh error means user cancelled the rename prompt
 		}
 		if err := config.RemoveAlias(selected); err != nil {
 			return err

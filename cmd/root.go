@@ -138,6 +138,7 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+// Execute runs the root ssmx command.
 func Execute(version, buildTime string) {
 	rootCmd.Version = version
 	if buildTime != "" {

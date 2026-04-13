@@ -1,3 +1,4 @@
+// Package health implements SSM connectivity diagnostics.
 package health
 
 import "github.com/charmbracelet/lipgloss"
@@ -5,6 +6,7 @@ import "github.com/charmbracelet/lipgloss"
 // Severity indicates how actionable a health check result is.
 type Severity int
 
+// Severity levels for health check results.
 const (
 	SeverityOK    Severity = iota // ✓ — no action needed
 	SeverityWarn                  // ! — degraded or missing optional config

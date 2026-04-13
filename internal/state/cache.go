@@ -1,6 +1,8 @@
+// Package state manages local SQLite state for instance caching.
 package state
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -10,14 +12,14 @@ const cacheTTL = 5 * time.Minute
 
 // CachedInstance is a row from the instance_cache table.
 type CachedInstance struct {
-	InstanceID   string
-	Name         string
-	State        string
-	SSMStatus    string
-	PrivateIP    string
-	AgentVersion string
-	Region       string
-	Profile      string
+	InstanceID       string
+	Name             string
+	State            string
+	SSMStatus        string
+	PrivateIP        string
+	AgentVersion     string
+	Region           string
+	Profile          string
 	PlatformName     string
 	AvailabilityZone string
 	CachedAt         time.Time
@@ -25,9 +27,9 @@ type CachedInstance struct {
 
 // GetCachedInstances returns all cached instances for the given profile+region
 // that were cached within the TTL window.
-func GetCachedInstances(db *sql.DB, profile, region string) ([]CachedInstance, error) {
+func GetCachedInstances(ctx context.Context, db *sql.DB, profile, region string) ([]CachedInstance, error) {
 	cutoff := time.Now().Add(-cacheTTL).Unix()
-	rows, err := db.Query(`
+	rows, err := db.QueryContext(ctx, `
 		SELECT instance_id, name, state, ssm_status, private_ip, agent_version,
 		       region, profile, cached_at, platform_name, availability_zone
 		FROM instance_cache
@@ -37,7 +39,7 @@ func GetCachedInstances(db *sql.DB, profile, region string) ([]CachedInstance, e
 	if err != nil {
 		return nil, fmt.Errorf("querying instance cache: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var instances []CachedInstance
 	for rows.Next() {
@@ -60,14 +62,14 @@ func GetCachedInstances(db *sql.DB, profile, region string) ([]CachedInstance, e
 }
 
 // UpsertInstances replaces the cached instance list for a profile+region.
-func UpsertInstances(db *sql.DB, instances []CachedInstance) error {
-	tx, err := db.Begin()
+func UpsertInstances(ctx context.Context, db *sql.DB, instances []CachedInstance) error {
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("beginning upsert transaction: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	stmt, err := tx.Prepare(`
+	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO instance_cache
 			(instance_id, name, state, ssm_status, private_ip, agent_version,
 			 region, profile, cached_at, platform_name, availability_zone)
@@ -81,11 +83,11 @@ func UpsertInstances(db *sql.DB, instances []CachedInstance) error {
 	if err != nil {
 		return fmt.Errorf("preparing upsert statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	now := time.Now().Unix()
 	for _, inst := range instances {
-		if _, err := stmt.Exec(
+		if _, err := stmt.ExecContext(ctx,
 			inst.InstanceID, inst.Name, inst.State, inst.SSMStatus,
 			inst.PrivateIP, inst.AgentVersion, inst.Region, inst.Profile,
 			now, inst.PlatformName, inst.AvailabilityZone,

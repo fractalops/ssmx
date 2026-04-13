@@ -1,3 +1,4 @@
+// Package config manages ssmx configuration loading and persistence.
 package config
 
 import (

@@ -1,3 +1,4 @@
+// ssmx is a CLI tool for AWS Systems Manager operations.
 package main
 
 import "github.com/fractalops/ssmx/cmd"

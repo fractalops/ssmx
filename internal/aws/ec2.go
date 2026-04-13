@@ -12,18 +12,18 @@ import (
 
 // Instance is a normalised view of an EC2 instance used throughout ssmx.
 type Instance struct {
-	InstanceID    string
-	Name          string
-	State         string
-	PrivateIP     string
-	PublicIP      string
-	Platform      string
-	SubnetID      string
-	VPCID         string
-	IAMProfileARN string
-	SSMStatus     string
-	AgentVersion  string
-	LastPingAt    string
+	InstanceID       string
+	Name             string
+	State            string
+	PrivateIP        string
+	PublicIP         string
+	Platform         string
+	SubnetID         string
+	VPCID            string
+	IAMProfileARN    string
+	SSMStatus        string
+	AgentVersion     string
+	LastPingAt       string
 	PlatformName     string // e.g. "Amazon Linux", "Ubuntu" — from SSM DescribeInstanceInformation
 	AvailabilityZone string // e.g. "us-east-1a" — from EC2 Placement.AvailabilityZone
 }

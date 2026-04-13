@@ -1,3 +1,4 @@
+// Package ssh provides SSH key management helpers for ssmx.
 package ssh
 
 import (
@@ -101,7 +102,7 @@ func generateEd25519Key(keyPath string) error {
 	if err != nil {
 		return fmt.Errorf("converting public key: %w", err)
 	}
-	if err := os.WriteFile(keyPath+".pub", gossh.MarshalAuthorizedKey(sshPub), 0o644); err != nil {
+	if err := os.WriteFile(keyPath+".pub", gossh.MarshalAuthorizedKey(sshPub), 0o644); err != nil { //nolint:gosec // public keys are world-readable by convention
 		return fmt.Errorf("writing public key: %w", err)
 	}
 

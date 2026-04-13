@@ -1,13 +1,14 @@
 package state
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/fractalops/ssmx/internal/config"
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // imported for SQLite driver side effects
 )
 
 // Open returns an open SQLite database at ~/.ssmx/state.db, creating it and
@@ -28,14 +29,15 @@ func Open() (*sql.DB, error) {
 	}
 
 	if err := migrate(db); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("migrating state db: %w", err)
 	}
 	return db, nil
 }
 
 func migrate(db *sql.DB) error {
-	_, execErr := db.Exec(`
+	ctx := context.Background()
+	_, execErr := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS instance_cache (
 			instance_id   TEXT PRIMARY KEY,
 			name          TEXT NOT NULL DEFAULT '',
@@ -73,18 +75,18 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("running migrations: %w", execErr)
 	}
 	// Add platform_name to existing installations that predate this column.
-	if err := addColumnIfMissing(db, "instance_cache", "platform_name", "TEXT NOT NULL DEFAULT ''"); err != nil {
+	if err := addColumnIfMissing(ctx, db, "instance_cache", "platform_name", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
-	return addColumnIfMissing(db, "instance_cache", "availability_zone", "TEXT NOT NULL DEFAULT ''")
+	return addColumnIfMissing(ctx, db, "instance_cache", "availability_zone", "TEXT NOT NULL DEFAULT ''")
 }
 
-func addColumnIfMissing(db *sql.DB, table, column, def string) error {
-	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+func addColumnIfMissing(ctx context.Context, db *sql.DB, table, column, def string) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info("+table+")")
 	if err != nil {
 		return fmt.Errorf("querying table_info for %s: %w", table, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var cid int
 		var name, typ string
@@ -101,7 +103,7 @@ func addColumnIfMissing(db *sql.DB, table, column, def string) error {
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("iterating table_info rows for %s: %w", table, err)
 	}
-	if _, err := db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + def); err != nil {
+	if _, err := db.ExecContext(ctx, "ALTER TABLE "+table+" ADD COLUMN "+column+" "+def); err != nil {
 		return fmt.Errorf("adding column %s to %s: %w", column, table, err)
 	}
 	return nil

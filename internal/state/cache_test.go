@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
@@ -21,6 +22,7 @@ func openTestDB(t *testing.T) *sql.DB {
 }
 
 func TestUpsertAndGetCachedInstances(t *testing.T) {
+	ctx := context.Background()
 	db := openTestDB(t)
 
 	instances := []CachedInstance{
@@ -28,11 +30,11 @@ func TestUpsertAndGetCachedInstances(t *testing.T) {
 		{InstanceID: "i-002", Name: "worker-01", State: "running", SSMStatus: "ok", PrivateIP: "10.0.0.2", AgentVersion: "3.2", Region: "us-east-1", Profile: "default"},
 	}
 
-	if err := UpsertInstances(db, instances); err != nil {
+	if err := UpsertInstances(ctx, db, instances); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	got, err := GetCachedInstances(db, "default", "us-east-1")
+	got, err := GetCachedInstances(ctx, db, "default", "us-east-1")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -45,9 +47,10 @@ func TestUpsertAndGetCachedInstances(t *testing.T) {
 }
 
 func TestGetCachedInstances_EmptyOnCacheMiss(t *testing.T) {
+	ctx := context.Background()
 	db := openTestDB(t)
 
-	got, err := GetCachedInstances(db, "default", "us-east-1")
+	got, err := GetCachedInstances(ctx, db, "default", "us-east-1")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -57,6 +60,7 @@ func TestGetCachedInstances_EmptyOnCacheMiss(t *testing.T) {
 }
 
 func TestUpsertAndGet_PlatformName(t *testing.T) {
+	ctx := context.Background()
 	db := openTestDB(t)
 	instances := []CachedInstance{
 		{
@@ -65,10 +69,10 @@ func TestUpsertAndGet_PlatformName(t *testing.T) {
 			Region: "us-east-1", Profile: "default", PlatformName: "Ubuntu",
 		},
 	}
-	if err := UpsertInstances(db, instances); err != nil {
+	if err := UpsertInstances(ctx, db, instances); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-	got, err := GetCachedInstances(db, "default", "us-east-1")
+	got, err := GetCachedInstances(ctx, db, "default", "us-east-1")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -78,23 +82,24 @@ func TestUpsertAndGet_PlatformName(t *testing.T) {
 }
 
 func TestUpsertInstances_UpdatesExisting(t *testing.T) {
+	ctx := context.Background()
 	db := openTestDB(t)
 
 	first := []CachedInstance{
 		{InstanceID: "i-001", Name: "web-prod", State: "running", SSMStatus: "ok", PrivateIP: "10.0.0.1", Region: "us-east-1", Profile: "default"},
 	}
-	if err := UpsertInstances(db, first); err != nil {
+	if err := UpsertInstances(ctx, db, first); err != nil {
 		t.Fatalf("first upsert: %v", err)
 	}
 
 	second := []CachedInstance{
 		{InstanceID: "i-001", Name: "web-prod", State: "stopped", SSMStatus: "unknown", PrivateIP: "10.0.0.1", Region: "us-east-1", Profile: "default"},
 	}
-	if err := UpsertInstances(db, second); err != nil {
+	if err := UpsertInstances(ctx, db, second); err != nil {
 		t.Fatalf("second upsert: %v", err)
 	}
 
-	got, err := GetCachedInstances(db, "default", "us-east-1")
+	got, err := GetCachedInstances(ctx, db, "default", "us-east-1")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}

@@ -9,14 +9,19 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/charmbracelet/huh"
-	"github.com/spf13/cobra"
-	"golang.org/x/term"
 	awsclient "github.com/fractalops/ssmx/internal/aws"
 	"github.com/fractalops/ssmx/internal/config"
 	"github.com/fractalops/ssmx/internal/preflight"
 	"github.com/fractalops/ssmx/internal/resolver"
 	"github.com/fractalops/ssmx/internal/session"
 	"github.com/fractalops/ssmx/internal/tui"
+	"github.com/spf13/cobra"
+	"golang.org/x/term"
+)
+
+const (
+	defaultProfile   = "default"
+	ssmStatusOffline = "offline"
 )
 
 // errOffline is returned when the target instance is not reachable via SSM.
@@ -43,7 +48,7 @@ func runExec(cmd *cobra.Command, target string, remoteCmd []string) error {
 	region := awsCfg.Region
 	profile := flagProfile
 	if profile == "" {
-		profile = "default"
+		profile = defaultProfile
 	}
 
 	cfg, err := config.Load()
@@ -59,7 +64,7 @@ func runExec(cmd *cobra.Command, target string, remoteCmd []string) error {
 		return nil // user cancelled picker
 	}
 
-	if inst.SSMStatus == "offline" {
+	if inst.SSMStatus == ssmStatusOffline {
 		fmt.Fprintf(os.Stderr, "%s  %s (%s) is not reachable via SSM\n",
 			tui.StyleWarning.Render("!"), inst.Name, inst.InstanceID,
 		)
@@ -100,7 +105,7 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	region := awsCfg.Region
 	profile := flagProfile
 	if profile == "" {
-		profile = "default"
+		profile = defaultProfile
 	}
 
 	cfg, err := config.Load()
@@ -128,7 +133,7 @@ func runConnect(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if target.SSMStatus == "offline" {
+	if target.SSMStatus == ssmStatusOffline {
 		fmt.Fprintf(os.Stderr, "%s  %s (%s) is not reachable via SSM\n",
 			tui.StyleWarning.Render("!"), target.Name, target.InstanceID,
 		)
@@ -145,7 +150,7 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	// Save terminal state before handing off to session-manager-plugin, which
 	// puts the terminal in raw mode. Restore it before showing the bookmark
 	// prompt so huh doesn't get garbled input.
-	termFd := int(os.Stdin.Fd())
+	termFd := int(os.Stdin.Fd()) //nolint:gosec // uintptr→int conversion is safe here: value is a small syscall return
 	oldState, err := term.GetState(termFd)
 	if err != nil {
 		oldState = nil

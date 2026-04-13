@@ -1,3 +1,4 @@
+// Package transfer implements file copy over SSM SSH sessions.
 package transfer
 
 import (
@@ -20,6 +21,7 @@ import (
 // Direction indicates which end of the copy is remote.
 type Direction int
 
+// Direction constants for CopySpec.
 const (
 	LocalToRemote Direction = iota // zero value — default when Direction is not set
 	RemoteToLocal
@@ -45,7 +47,7 @@ type proxyConn struct {
 	cmd    *exec.Cmd
 }
 
-func (p *proxyConn) Read(b []byte) (int, error)  { return p.stdout.Read(b) }  //nolint:wrapcheck // net.Conn interface forwarder — must return error as-is
+func (p *proxyConn) Read(b []byte) (int, error)  { return p.stdout.Read(b) } //nolint:wrapcheck // net.Conn interface forwarder — must return error as-is
 func (p *proxyConn) Write(b []byte) (int, error) { return p.stdin.Write(b) } //nolint:wrapcheck // net.Conn interface forwarder — must return error as-is
 
 func (p *proxyConn) Close() error {
@@ -218,7 +220,7 @@ func uploadFile(client *sftp.Client, localPath, remotePath string) error {
 }
 
 func uploadDir(client *sftp.Client, localDir, remoteDir string) error {
-	return filepath.Walk(localDir, func(localPath string, info os.FileInfo, err error) error {
+	if err := filepath.Walk(localDir, func(localPath string, info os.FileInfo, err error) error {
 		if err != nil {
 			return fmt.Errorf("walking %s: %w", localPath, err)
 		}
@@ -231,7 +233,10 @@ func uploadDir(client *sftp.Client, localDir, remoteDir string) error {
 			return client.MkdirAll(remotePath)
 		}
 		return uploadFile(client, localPath, remotePath)
-	})
+	}); err != nil {
+		return fmt.Errorf("walking %s: %w", localDir, err)
+	}
+	return nil
 }
 
 // download copies remotePath (file or directory) from the SFTP server to localPath.
@@ -281,7 +286,7 @@ func downloadDir(client *sftp.Client, remoteDir, localDir string) error {
 		}
 		rel, relErr := filepath.Rel(remoteDir, walker.Path())
 		if relErr != nil {
-			return relErr
+			return fmt.Errorf("computing relative path in %s: %w", remoteDir, relErr)
 		}
 		target := filepath.Join(localDir, filepath.FromSlash(rel))
 		if walker.Stat().IsDir() {

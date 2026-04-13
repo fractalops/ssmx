@@ -12,8 +12,8 @@ import (
 	"github.com/fractalops/ssmx/internal/config"
 	"github.com/fractalops/ssmx/internal/preflight"
 	"github.com/fractalops/ssmx/internal/session"
-	"github.com/fractalops/ssmx/internal/state"
 	sshpkg "github.com/fractalops/ssmx/internal/ssh"
+	"github.com/fractalops/ssmx/internal/state"
 )
 
 // runProxy is the backend for the --proxy ProxyCommand.
@@ -37,7 +37,7 @@ func runProxy(instanceID, user string) error {
 	region := awsCfg.Region
 	profile := flagProfile
 	if profile == "" {
-		profile = "default"
+		profile = defaultProfile
 	}
 
 	cfg, err := config.Load()
@@ -75,7 +75,7 @@ func runProxy(instanceID, user string) error {
 func resolveSSHUser(ctx context.Context, awsCfg awssdk.Config, instanceID, profile, region string) string {
 	// Try the cache first.
 	if db, err := state.Open(); err == nil {
-		cached, _ := state.GetCachedInstances(db, profile, region)
+		cached, _ := state.GetCachedInstances(ctx, db, profile, region)
 		_ = db.Close()
 		for _, c := range cached {
 			if c.InstanceID == instanceID {
@@ -101,7 +101,7 @@ func resolveSSHUser(ctx context.Context, awsCfg awssdk.Config, instanceID, profi
 func resolveAZ(ctx context.Context, awsCfg awssdk.Config, instanceID, profile, region string) (string, error) {
 	// Try the cache first.
 	if db, err := state.Open(); err == nil {
-		cached, _ := state.GetCachedInstances(db, profile, region)
+		cached, _ := state.GetCachedInstances(ctx, db, profile, region)
 		_ = db.Close()
 		for _, c := range cached {
 			if c.InstanceID == instanceID && c.AvailabilityZone != "" {

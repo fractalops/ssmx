@@ -1,3 +1,4 @@
+// Package tui provides terminal UI components for ssmx.
 package tui
 
 import (
@@ -54,10 +55,12 @@ func RunPicker(instances []awsclient.Instance) (*awsclient.Instance, error) {
 	return final.(PickerModel).result.Instance, nil
 }
 
+// Init implements bubbletea.Model.
 func (m PickerModel) Init() tea.Cmd {
 	return textinput.Blink
 }
 
+// Update implements bubbletea.Model.
 func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -95,7 +98,11 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.search, cmd = m.search.Update(msg)
 	m.applyFilter()
 	if m.cursor >= len(m.filtered) {
-		m.cursor = max(0, len(m.filtered)-1)
+		if len(m.filtered) > 0 {
+			m.cursor = len(m.filtered) - 1
+		} else {
+			m.cursor = 0
+		}
 	}
 	return m, cmd
 }
@@ -116,6 +123,7 @@ func (m *PickerModel) applyFilter() {
 	m.filtered = out
 }
 
+// View implements bubbletea.Model.
 func (m PickerModel) View() string {
 	var sb strings.Builder
 
@@ -154,10 +162,10 @@ func (m PickerModel) View() string {
 		}
 		nameCell := lipgloss.NewStyle().Width(30).Render(nameText)
 
-		idCell    := lipgloss.NewStyle().Width(21).Render(inst.InstanceID)
+		idCell := lipgloss.NewStyle().Width(21).Render(inst.InstanceID)
 		stateCell := lipgloss.NewStyle().Width(9).Render(inst.State)
-		ssmCell   := lipgloss.NewStyle().Width(6).Render(SSMStatusStyle(inst.SSMStatus).Render(SSMStatusGlyph(inst.SSMStatus)))
-		ipCell    := lipgloss.NewStyle().Width(15).Render(inst.PrivateIP)
+		ssmCell := lipgloss.NewStyle().Width(6).Render(SSMStatusStyle(inst.SSMStatus).Render(SSMStatusGlyph(inst.SSMStatus)))
+		ipCell := lipgloss.NewStyle().Width(15).Render(inst.PrivateIP)
 
 		row := "  " + nameCell + " " + idCell + " " + stateCell + " " + ssmCell + " " + ipCell
 
@@ -176,9 +184,9 @@ func (m PickerModel) View() string {
 	return lipgloss.NewStyle().Width(m.width).Render(sb.String())
 }
 
-func truncate(s string, max int) string {
-	if len(s) <= max {
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
 		return s
 	}
-	return s[:max-1] + "…"
+	return s[:maxLen-1] + "…"
 }

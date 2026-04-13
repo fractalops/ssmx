@@ -1,6 +1,7 @@
 package preflight
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,12 +22,12 @@ func PluginInstalled() bool {
 
 // InstallPlugin attempts to install session-manager-plugin for the current
 // platform. Returns an error if automatic installation is not supported.
-func InstallPlugin() error {
+func InstallPlugin(ctx context.Context) error {
 	switch runtime.GOOS {
 	case "darwin":
-		return installDarwin()
+		return installDarwin(ctx)
 	case "linux":
-		return installLinux()
+		return installLinux(ctx)
 	default:
 		return fmt.Errorf("automatic install not supported on %s — see https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html", runtime.GOOS)
 	}
@@ -38,17 +39,17 @@ var knownBrewBins = []string{
 	"/usr/local/bin",    // Intel
 }
 
-func installDarwin() error {
+func installDarwin(ctx context.Context) error {
 	// If brew already downloaded the cask pkg, use it directly — no need to
 	// run brew again (which triggers a slow index update).
 	if pkg := findBrewCaskPkg(); pkg != "" {
-		return openPkgInstaller(pkg)
+		return openPkgInstaller(ctx, pkg)
 	}
 
 	// Try brew to download the cask.
 	if brewPath, err := exec.LookPath("brew"); err == nil {
 		fmt.Print("  Using Homebrew... ")
-		cmd := exec.Command(brewPath, "install", "session-manager-plugin")
+		cmd := exec.CommandContext(ctx, brewPath, "install", "session-manager-plugin") //nolint:gosec // installer args are controlled by this binary, not user input
 		cmd.Env = append(os.Environ(), "HOMEBREW_NO_AUTO_UPDATE=1")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -61,12 +62,12 @@ func installDarwin() error {
 			return nil
 		}
 		if pkg := findBrewCaskPkg(); pkg != "" {
-			return openPkgInstaller(pkg)
+			return openPkgInstaller(ctx, pkg)
 		}
 	}
 
 	// No brew — download the .pkg directly.
-	return installDarwinPkg()
+	return installDarwinPkg(ctx)
 }
 
 // findBrewCaskPkg looks for a downloaded .pkg in the brew Caskroom.
@@ -81,7 +82,7 @@ func findBrewCaskPkg() string {
 	return ""
 }
 
-func installDarwinPkg() error {
+func installDarwinPkg(ctx context.Context) error {
 	pkgURL := "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/mac/session-manager-plugin.pkg"
 	if runtime.GOARCH == "arm64" {
 		pkgURL = "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/mac_arm64/session-manager-plugin.pkg"
@@ -95,24 +96,24 @@ func installDarwinPkg() error {
 
 	pkgPath := filepath.Join(tmpDir, "session-manager-plugin.pkg")
 	fmt.Print("  Downloading session-manager-plugin.pkg... ")
-	if err := downloadFile(pkgURL, pkgPath); err != nil {
+	if err := downloadFile(ctx, pkgURL, pkgPath); err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
 	fmt.Println("done")
 
-	return openPkgInstaller(pkgPath)
+	return openPkgInstaller(ctx, pkgPath)
 }
 
 // openPkgInstaller installs a .pkg silently via osascript, which shows a
 // single macOS auth dialog and runs installer headlessly.
-func openPkgInstaller(pkgPath string) error {
+func openPkgInstaller(ctx context.Context, pkgPath string) error {
 	const (
 		pluginBin  = "/usr/local/sessionmanagerplugin/bin/session-manager-plugin"
 		pluginLink = "/usr/local/bin/session-manager-plugin"
 	)
 
 	// Remove quarantine so Gatekeeper doesn't block the pkg.
-	_ = exec.Command("xattr", "-d", "com.apple.quarantine", pkgPath).Run()
+	_ = exec.CommandContext(ctx, "xattr", "-d", "com.apple.quarantine", pkgPath).Run() //nolint:gosec // installer args are controlled by this binary, not user input
 
 	fmt.Println()
 	fmt.Println("  session-manager-plugin is an AWS tool ssmx uses to open secure")
@@ -123,7 +124,7 @@ func openPkgInstaller(pkgPath string) error {
 		`do shell script "installer -pkg %s -target / && ln -sf %s %s" with administrator privileges`,
 		pkgPath, pluginBin, pluginLink,
 	)
-	cmd := exec.Command("osascript", "-e", script)
+	cmd := exec.CommandContext(ctx, "osascript", "-e", script) //nolint:gosec // installer args are controlled by this binary, not user input
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if strings.Contains(string(out), "User cancelled") {
 			return fmt.Errorf("installation cancelled")
@@ -156,12 +157,16 @@ func ensurePluginOnPath() error {
 	return fmt.Errorf("session-manager-plugin installed but not found in PATH or known locations — open a new terminal and try again")
 }
 
-func downloadFile(url, dest string) error {
-	resp, err := http.Get(url) //nolint:gosec // URL is a hardcoded AWS S3 path
+func downloadFile(ctx context.Context, url, dest string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil) //nolint:gosec // URL is a hardcoded AWS S3 path
+	if err != nil {
+		return fmt.Errorf("creating request for %s: %w", url, err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("downloading %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
@@ -171,7 +176,7 @@ func downloadFile(url, dest string) error {
 	if err != nil {
 		return fmt.Errorf("creating download destination %s: %w", dest, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if _, err := io.Copy(f, resp.Body); err != nil {
 		return fmt.Errorf("writing download to %s: %w", dest, err)
@@ -179,38 +184,38 @@ func downloadFile(url, dest string) error {
 	return nil
 }
 
-func installLinux() error {
+func installLinux(ctx context.Context) error {
 	if _, err := exec.LookPath("dpkg"); err == nil {
-		return installLinuxDeb()
+		return installLinuxDeb(ctx)
 	}
 	if _, err := exec.LookPath("rpm"); err == nil {
-		return installLinuxRPM()
+		return installLinuxRPM(ctx)
 	}
 	return fmt.Errorf("unsupported Linux distribution — install manually: https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html")
 }
 
-func installLinuxDeb() error {
+func installLinuxDeb(ctx context.Context) error {
 	cmds := [][]string{
 		{"curl", "--silent", "-o", "/tmp/session-manager-plugin.deb",
 			"https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb"},
 		{"sudo", "dpkg", "-i", "/tmp/session-manager-plugin.deb"},
 	}
 	for _, args := range cmds {
-		if err := exec.Command(args[0], args[1:]...).Run(); err != nil {
+		if err := exec.CommandContext(ctx, args[0], args[1:]...).Run(); err != nil { //nolint:gosec // installer args are controlled by this binary, not user input
 			return fmt.Errorf("running %v: %w", args, err)
 		}
 	}
 	return nil
 }
 
-func installLinuxRPM() error {
+func installLinuxRPM(ctx context.Context) error {
 	cmds := [][]string{
 		{"curl", "--silent", "-o", "/tmp/session-manager-plugin.rpm",
 			"https://s3.amazonaws.com/session-manager-downloads/plugin/latest/linux_64bit/session-manager-plugin.rpm"},
 		{"sudo", "yum", "install", "-y", "/tmp/session-manager-plugin.rpm"},
 	}
 	for _, args := range cmds {
-		if err := exec.Command(args[0], args[1:]...).Run(); err != nil {
+		if err := exec.CommandContext(ctx, args[0], args[1:]...).Run(); err != nil { //nolint:gosec // installer args are controlled by this binary, not user input
 			return fmt.Errorf("running %v: %w", args, err)
 		}
 	}

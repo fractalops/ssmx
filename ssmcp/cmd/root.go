@@ -7,14 +7,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/spf13/cobra"
 	awsclient "github.com/fractalops/ssmx/internal/aws"
 	"github.com/fractalops/ssmx/internal/config"
 	"github.com/fractalops/ssmx/internal/preflight"
 	"github.com/fractalops/ssmx/internal/resolver"
+	sshpkg "github.com/fractalops/ssmx/internal/ssh"
 	"github.com/fractalops/ssmx/internal/transfer"
 	"github.com/fractalops/ssmx/internal/tui"
-	sshpkg "github.com/fractalops/ssmx/internal/ssh"
+	"github.com/spf13/cobra"
 )
 
 var (

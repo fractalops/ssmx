@@ -37,7 +37,7 @@ func runHealth(cmd *cobra.Command, target string) error {
 		return nil // user cancelled picker
 	}
 
-	isTTY := term.IsTerminal(int(os.Stdout.Fd()))
+	isTTY := term.IsTerminal(int(os.Stdout.Fd())) //nolint:gosec // uintptr→int conversion is safe here: value is a small syscall return
 
 	header := fmt.Sprintf("ssmx health: %s (%s)  %s", nameOrID(inst), inst.InstanceID, awsCfg.Region)
 	if isTTY {

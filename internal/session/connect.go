@@ -1,3 +1,4 @@
+// Package session manages SSM session lifecycle and shell/exec/forward modes.
 package session
 
 import (

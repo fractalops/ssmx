@@ -1,3 +1,4 @@
+// Package resolver resolves instance targets from names, tags, and bookmarks.
 package resolver
 
 import (

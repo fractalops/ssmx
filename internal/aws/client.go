@@ -1,3 +1,4 @@
+// Package aws provides AWS client helpers for ssmx.
 package aws
 
 import (

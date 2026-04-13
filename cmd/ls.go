@@ -8,10 +8,10 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/spf13/cobra"
 	awsclient "github.com/fractalops/ssmx/internal/aws"
 	"github.com/fractalops/ssmx/internal/state"
 	"github.com/fractalops/ssmx/internal/tui"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -43,10 +43,10 @@ func runList(cmd *cobra.Command) error {
 
 	profile := flagProfile
 	if profile == "" {
-		profile = "default"
+		profile = defaultProfile
 	}
 
-	cached, err := state.GetCachedInstances(db, profile, region)
+	cached, err := state.GetCachedInstances(ctx, db, profile, region)
 	var instances []awsclient.Instance
 
 	if err == nil && len(cached) > 0 {
@@ -90,7 +90,7 @@ func runList(cmd *cobra.Command) error {
 				AvailabilityZone: inst.AvailabilityZone,
 			})
 		}
-		_ = state.UpsertInstances(db, toCache)
+		_ = state.UpsertInstances(ctx, db, toCache)
 	}
 
 	if lsFlagUnhealthy {
@@ -155,9 +155,9 @@ func printInstances(instances []awsclient.Instance, format string) error {
 	}
 }
 
-func truncateName(s string, max int) string {
-	if len(s) <= max {
+func truncateName(s string, maxLen int) string {
+	if len(s) <= maxLen {
 		return s
 	}
-	return s[:max-1] + "…"
+	return s[:maxLen-1] + "…"
 }
