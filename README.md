@@ -11,13 +11,13 @@ Is a utility that aims to simplify aws ssm operations and user experience
 ## Features
 
 - **Interactive TUI:** fuzzy-search instance picker
-- **exec:** `ssmx web-prod -- df -h` streams output live, exit codes propagate
-- **Bookmarking:** saves instances you connect
-- **interactive setup:** detects missing credentials, region, and Session Manager plugin; offers to install
-- **SSH config generation:** `ssmx --configure` → "Generate SSH config" writes ProxyCommand entries to `~/.ssh/config.d/ssmx`
+- **exec:** Execute commands with standard io support
+- **Bookmarking:** Save aliases instances you connect
+- **interactive setup:** Detect missing credentials, region, and Session Manager plugin; offers to install
+- **SSH config generation:** Easily Configure SSH over SSM
 - **Pipe-friendly:** `ssmx -l --format json` and non-TTY output work cleanly in scripts
-- **Port forwarding:** Simplified intuitive port forwarding
-- **Health diagnostics:** `ssmx <host> --health` streams read-only SSM connectivity checks with pass/warn/error results
+- **Port forwarding:** Intuitive port forwarding
+- **Health diagnostics:** Run pre-flight checks to diagnose SSM connectivity
 - **File copy:** Copy files between, to or from instances over SSM without open ports (separate `ssmcp` binary)
 
 ## Installation
