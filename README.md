@@ -134,8 +134,10 @@ Writes entries to `~/.ssh/config.d/ssmx` so you can `ssh web-prod` directly thro
 
 ```
 ~/.ssmx/
-  config.yaml    # profiles, aliases/bookmarks, default region
-  state.db       # sqlite: instance cache
+ ├── config.yaml  # profiles, aliases/bookmarks, default region
+ ├── ssh_key      # ssh keys
+ ├── ssh_key.pub 
+ └── state.db     # sqlite: instance cache
 ```
 
 ## Contributing
