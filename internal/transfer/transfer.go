@@ -285,9 +285,12 @@ func downloadFile(client *sftp.Client, remotePath, localPath string) error {
 		return fmt.Errorf("creating local file %s: %w", localPath, err)
 	}
 	defer func() { _ = dst.Close() }()
-	pr := newProgressReader(src, path.Base(remotePath), size)
-	defer pr.Done()
-	if _, err = io.Copy(dst, pr); err != nil {
+	// Wrap dst so src (*sftp.File) remains unwrapped — io.Copy then calls
+	// src.WriteTo(pw) which uses sftp's concurrent-read implementation.
+	pw := newProgressWriter(dst, path.Base(remotePath))
+	pw.pt.total = size
+	defer pw.Done()
+	if _, err = io.Copy(pw, src); err != nil {
 		return fmt.Errorf("copying remote %s to %s: %w", remotePath, localPath, err)
 	}
 	return nil

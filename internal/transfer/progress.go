@@ -107,6 +107,10 @@ func (pr *progressReader) Read(b []byte) (int, error) {
 	return n, err //nolint:wrapcheck // io.Reader interface forwarder
 }
 
+// Size implements the interface checked by sftp.File.ReadFrom to enable
+// concurrent writes. Without this, UseConcurrentWrites is silently ignored.
+func (pr *progressReader) Size() int64 { return pr.pt.total }
+
 func (pr *progressReader) Done() { pr.pt.Done() }
 
 // progressWriter wraps an io.Writer, tracking bytes written.
