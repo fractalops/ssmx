@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -37,13 +36,15 @@ func (e *errOffline) Error() string {
 var rootCmd = &cobra.Command{
 	Use:   "ssmcp SOURCE DEST",
 	Short: "Copy files to or from an EC2 instance over SSM",
-	Long: `Copy files to or from an EC2 instance using scp over an SSM SSH session.
+	Long: `Copy files to or from an EC2 instance via SFTP over an SSM SSH session.
 
-Exactly one of SOURCE or DEST must be a remote path in host:path form:
+At least one of SOURCE or DEST must be a remote path (host:path).
+When both are remote, files are streamed instance-to-instance via tar — no temp files, no open ports.
 
   ssmcp ./file.txt web-prod:/tmp/
   ssmcp web-prod:/var/log/app.log ./
   ssmcp -r ./dist/ web-prod:/srv/app/
+  ssmcp web-prod:/data/ web-staging:/data/
 
 The host is resolved via bookmark alias, Name tag, or instance ID.
 EC2 Instance Connect must be available on the target instance.`,
@@ -68,17 +69,8 @@ func runCopy(cmd *cobra.Command, src, dst string) error {
 	srcHost, srcPath, srcRemote := parseEndpoint(src)
 	dstHost, dstPath, dstRemote := parseEndpoint(dst)
 
-	// Exactly one must be remote.
-	if srcRemote && dstRemote {
-		return fmt.Errorf("both SOURCE and DEST are remote — exactly one must be a local path")
-	}
 	if !srcRemote && !dstRemote {
-		return fmt.Errorf("both SOURCE and DEST are local — exactly one must be a remote path (host:path)")
-	}
-
-	target := srcHost
-	if dstRemote {
-		target = dstHost
+		return fmt.Errorf("both SOURCE and DEST are local — at least one must be a remote path (host:path)")
 	}
 
 	ctx := context.Background()
@@ -108,6 +100,12 @@ func runCopy(cmd *cobra.Command, src, dst string) error {
 	}
 	ssmInfo, _ := awsclient.ListManagedInstances(ctx, awsCfg)
 	awsclient.MergeSSMInfo(instances, ssmInfo)
+
+	// Resolve source instance (always present when srcRemote; or dst when only dst is remote).
+	target := srcHost
+	if !srcRemote {
+		target = dstHost
+	}
 
 	inst, err := resolver.Resolve(target, instances, cfg.Aliases)
 	if err != nil {
@@ -146,6 +144,45 @@ func runCopy(cmd *cobra.Command, src, dst string) error {
 		return fmt.Errorf("loading SSH key: %w", err)
 	}
 
+	// Both-remote: instance-to-instance tar pipe.
+	if srcRemote && dstRemote {
+		dstInst, err := resolver.Resolve(dstHost, instances, cfg.Aliases)
+		if err != nil {
+			var ambig *resolver.ErrAmbiguous
+			if errors.As(err, &ambig) {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%q is ambiguous (%d matches) — select one:\n", dstHost, len(ambig.Matches))
+				dstInst, err = tui.RunPicker(ambig.Matches)
+				if err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		}
+		if dstInst == nil {
+			return nil
+		}
+		if dstInst.SSMStatus == "offline" {
+			fmt.Fprintf(os.Stderr, "%s  %s (%s) is not reachable via SSM\n",
+				tui.StyleWarning.Render("!"), dstInst.Name, dstInst.InstanceID,
+			)
+			fmt.Fprintf(os.Stderr, "  Run %s to investigate\n",
+				tui.StyleBold.Render("ssmx "+dstInst.InstanceID+" --health"),
+			)
+			return &errOffline{dstInst.Name, dstInst.InstanceID}
+		}
+		// tar handles directories recursively by default; Recursive flag is not needed.
+		return transfer.CopyRemoteToRemote(ctx, inst.InstanceID, srcPath, dstInst.InstanceID, dstPath,
+			transfer.CopySpec{
+				User:    user,
+				KeyPath: keyPath,
+				Profile: flagProfile,
+				Region:  region,
+			},
+		)
+	}
+
+	// One remote: standard local↔remote SFTP copy.
 	var direction transfer.Direction
 	var localPath, remotePath string
 	if srcRemote {
@@ -188,11 +225,6 @@ func parseEndpoint(s string) (host, path string, remote bool) {
 // Execute is the entry point called from ssmcp/main.go.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			// Propagate scp's exit code directly.
-			os.Exit(exitErr.ExitCode())
-		}
 		var offline *errOffline
 		if errors.As(err, &offline) {
 			// Message already printed; just exit non-zero.
