@@ -11,7 +11,6 @@ import (
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	awsclient "github.com/fractalops/ssmx/internal/aws"
 	"github.com/fractalops/ssmx/internal/config"
-	"github.com/fractalops/ssmx/internal/preflight"
 	"github.com/fractalops/ssmx/internal/session"
 	sshpkg "github.com/fractalops/ssmx/internal/ssh"
 	"github.com/fractalops/ssmx/internal/state"
@@ -26,10 +25,6 @@ import (
 //	ProxyCommand ssmcp --proxy %h %r
 func runProxy(instanceID, user string) error {
 	ctx := context.Background()
-
-	if err := preflight.Run(ctx, flagProfile, flagRegion); err != nil {
-		return err
-	}
 
 	awsCfg, err := awsclient.NewConfig(ctx, flagProfile, flagRegion)
 	if err != nil {

@@ -171,6 +171,10 @@ func runCopy(cmd *cobra.Command, src, dst string) error {
 			)
 			return &errOffline{dstInst.Name, dstInst.InstanceID}
 		}
+		fmt.Fprintf(os.Stderr, "%s  %s:%s → %s:%s\n",
+			tui.StyleSuccess.Render("→"),
+			inst.Name, srcPath, dstInst.Name, dstPath,
+		)
 		// tar handles directories recursively by default; Recursive flag is not needed.
 		return transfer.CopyRemoteToRemote(ctx, inst.InstanceID, srcPath, dstInst.InstanceID, dstPath,
 			transfer.CopySpec{
@@ -189,10 +193,14 @@ func runCopy(cmd *cobra.Command, src, dst string) error {
 		direction = transfer.RemoteToLocal
 		localPath = dstPath
 		remotePath = srcPath
+		fmt.Fprintf(os.Stderr, "%s  %s:%s → %s\n",
+			tui.StyleSuccess.Render("→"), inst.Name, remotePath, localPath)
 	} else {
 		direction = transfer.LocalToRemote
 		localPath = srcPath
 		remotePath = dstPath
+		fmt.Fprintf(os.Stderr, "%s  %s → %s:%s\n",
+			tui.StyleSuccess.Render("→"), localPath, inst.Name, remotePath)
 	}
 
 	return transfer.Copy(ctx, inst.InstanceID, transfer.CopySpec{

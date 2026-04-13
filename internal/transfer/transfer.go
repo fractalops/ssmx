@@ -212,8 +212,14 @@ func uploadFile(client *sftp.Client, localPath, remotePath string) error {
 		return fmt.Errorf("creating remote file %s: %w", remotePath, err)
 	}
 	defer func() { _ = dst.Close() }()
-	_, err = io.Copy(dst, src)
-	if err != nil {
+	info, _ := src.Stat()
+	var size int64
+	if info != nil {
+		size = info.Size()
+	}
+	pr := newProgressReader(src, filepath.Base(localPath), size)
+	defer pr.Done()
+	if _, err = io.Copy(dst, pr); err != nil {
 		return fmt.Errorf("copying %s to remote %s: %w", localPath, remotePath, err)
 	}
 	return nil
@@ -261,6 +267,11 @@ func downloadFile(client *sftp.Client, remotePath, localPath string) error {
 	if err := os.MkdirAll(filepath.Dir(localPath), 0o750); err != nil {
 		return fmt.Errorf("creating local dir for %s: %w", localPath, err)
 	}
+	info, _ := client.Stat(remotePath)
+	var size int64
+	if info != nil {
+		size = info.Size()
+	}
 	src, err := client.Open(remotePath)
 	if err != nil {
 		return fmt.Errorf("opening remote file %s: %w", remotePath, err)
@@ -271,8 +282,9 @@ func downloadFile(client *sftp.Client, remotePath, localPath string) error {
 		return fmt.Errorf("creating local file %s: %w", localPath, err)
 	}
 	defer func() { _ = dst.Close() }()
-	_, err = io.Copy(dst, src)
-	if err != nil {
+	pr := newProgressReader(src, path.Base(remotePath), size)
+	defer pr.Done()
+	if _, err = io.Copy(dst, pr); err != nil {
 		return fmt.Errorf("copying remote %s to %s: %w", remotePath, localPath, err)
 	}
 	return nil
@@ -356,8 +368,9 @@ func CopyRemoteToRemote(ctx context.Context, srcInstanceID, srcPath, dstInstance
 	}
 	defer func() { _ = dstSession.Close() }()
 
-	pr, pw := io.Pipe()
-	srcSession.Stdout = pw
+	pr, pipeW := io.Pipe()
+	progW := newProgressWriter(pipeW, path.Base(srcPath))
+	srcSession.Stdout = progW
 	srcSession.Stderr = os.Stderr
 	dstSession.Stdin = pr
 	dstSession.Stdout = os.Stdout
@@ -374,7 +387,8 @@ func CopyRemoteToRemote(ctx context.Context, srcInstanceID, srcPath, dstInstance
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		defer func() { _ = pw.Close() }()
+		defer func() { _ = pipeW.Close() }()
+		defer progW.Done()
 		if err := srcSession.Run(srcCmd); err != nil {
 			return fmt.Errorf("source tar: %w", err)
 		}
