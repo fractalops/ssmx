@@ -154,7 +154,10 @@ func Copy(ctx context.Context, instanceID string, spec CopySpec) error {
 	}
 	defer func() { _ = sshClient.Close() }()
 
-	sftpClient, err := sftp.NewClient(sshClient)
+	sftpClient, err := sftp.NewClient(sshClient,
+		sftp.UseConcurrentReads(true),
+		sftp.UseConcurrentWrites(true),
+	)
 	if err != nil {
 		return fmt.Errorf("SFTP client: %w", err)
 	}
