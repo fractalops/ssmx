@@ -28,6 +28,25 @@ type RunOptions struct {
 	Stderr io.Writer // status output; defaults to os.Stderr
 }
 
+// ANSI color codes used for step status output.
+const (
+	ansiReset  = "\033[0m"
+	ansiGreen  = "\033[32m"
+	ansiRed    = "\033[31m"
+	ansiYellow = "\033[33m"
+	ansiDim    = "\033[2m"
+)
+
+// ansi wraps s in the given ANSI escape sequence when isTTY is true.
+// When isTTY is false the string is returned unchanged so piped output
+// stays clean.
+func ansi(isTTY bool, code, s string) string {
+	if !isTTY {
+		return s
+	}
+	return code + s + ansiReset
+}
+
 // isTerminalWriter reports whether w is a file descriptor that refers to a
 // terminal. Used to decide whether to show animated spinners.
 func isTerminalWriter(w io.Writer) bool {
@@ -145,7 +164,7 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 			continue
 		}
 		if o.err != nil {
-			fmt.Fprintf(w, "  ✗  %s  error: %v\n", o.name, o.err)
+			fmt.Fprintf(w, "  %s  %s  error: %v\n", ansi(isTTY, ansiRed, "✗"), o.name, o.err)
 			failedSteps[o.name] = true
 			if firstErr == nil {
 				firstErr = o.err
@@ -159,7 +178,7 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 			if step.Always {
 				// Log cleanup step failures so operators can see them, but do not
 				// let them mask the original error that triggered cleanup.
-				fmt.Fprintf(w, "  !  %s  cleanup failed (exit code %d)\n", o.name, o.result.ExitCode)
+				fmt.Fprintf(w, "  %s  %s  cleanup failed (exit code %d)\n", ansi(isTTY, ansiYellow, "!"), o.name, o.result.ExitCode)
 			} else if firstErr == nil {
 				firstErr = fmt.Errorf("step %q failed (exit code %d)", o.name, o.result.ExitCode)
 			}
@@ -172,11 +191,13 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 // useSpinner enables the animated braille spinner + live stdout streaming;
 // it should only be true when w is a TTY and the step's level has one step.
 func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx ExprContext, failedSteps map[string]bool, opts RunOptions, w io.Writer, useSpinner bool) (*StepResult, bool, error) {
+	isTTY := isTerminalWriter(w)
+
 	// Skip if any dependency failed (unless always: true).
 	if !step.Always {
 		for _, dep := range step.Needs {
 			if failedSteps[dep] {
-				fmt.Fprintf(w, "  —  %s  skipped (dependency %q failed)\n", name, dep)
+				fmt.Fprintf(w, "  %s  %s  skipped (dependency %q failed)\n", ansi(isTTY, ansiDim, "—"), name, dep)
 				return nil, true, nil
 			}
 		}
@@ -189,14 +210,14 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 			return nil, false, fmt.Errorf("step %q if condition: %w", name, err)
 		}
 		if !run {
-			fmt.Fprintf(w, "  —  %s  skipped (if: condition false)\n", name)
+			fmt.Fprintf(w, "  %s  %s  skipped (if: condition false)\n", ansi(isTTY, ansiDim, "—"), name)
 			return nil, true, nil
 		}
 	}
 
 	if opts.DryRun {
 		resolved, _ := Resolve(step.Shell, exprCtx)
-		fmt.Fprintf(w, "  ·  %s  [dry-run] %s: %s\n", name, step.Kind(), resolved)
+		fmt.Fprintf(w, "  %s  %s  [dry-run] %s: %s\n", ansi(isTTY, ansiDim, "·"), name, step.Kind(), resolved)
 		return &StepResult{Success: true}, false, nil
 	}
 
@@ -205,8 +226,8 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 	var progress io.Writer
 	stopSpinner := func() {}
 	if useSpinner {
-		fmt.Fprintf(w, "  ⠋  %s  running...", name) // no trailing newline — spinner overwrites via \r
-		sp := newStepSpinner(w, name)
+		fmt.Fprintf(w, "  %s  %s  %s", ansi(isTTY, ansiDim, "⠋"), name, ansi(isTTY, ansiDim, "running...")) // no trailing newline — spinner overwrites via \r
+		sp := newStepSpinner(w, name, isTTY)
 		var stopOnce sync.Once
 		stopSpinner = func() {
 			stopOnce.Do(func() {
@@ -218,7 +239,7 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 		// progressWriter stops the spinner on first write and indents output.
 		progress = newProgressWriter(w, stopSpinner)
 	} else {
-		fmt.Fprintf(w, "  ⠋  %s  running...\n", name)
+		fmt.Fprintf(w, "  %s  %s  %s\n", ansi(isTTY, ansiDim, "⠋"), name, ansi(isTTY, ansiDim, "running..."))
 	}
 
 	switch step.Kind() {
@@ -233,9 +254,9 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 			return nil, false, err
 		}
 		if result.Success {
-			fmt.Fprintf(w, "  ✓  %s\n", name)
+			fmt.Fprintf(w, "  %s  %s\n", ansi(isTTY, ansiGreen, "✓"), name)
 		} else {
-			fmt.Fprintf(w, "  ✗  %s  exit code %d\n", name, result.ExitCode)
+			fmt.Fprintf(w, "  %s  %s  exit code %d\n", ansi(isTTY, ansiRed, "✗"), name, result.ExitCode)
 		}
 		return result, false, nil
 	default:

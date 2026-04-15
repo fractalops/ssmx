@@ -16,18 +16,20 @@ var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 // \r, accelerating from 150ms → 100ms → 60ms intervals as time passes.
 // Call Stop() then ClearLine() before printing the final status line.
 type stepSpinner struct {
-	w    io.Writer
-	name string
-	done chan struct{}
-	once sync.Once
-	wg   sync.WaitGroup
+	w     io.Writer
+	name  string
+	isTTY bool
+	done  chan struct{}
+	once  sync.Once
+	wg    sync.WaitGroup
 }
 
-func newStepSpinner(w io.Writer, name string) *stepSpinner {
+func newStepSpinner(w io.Writer, name string, isTTY bool) *stepSpinner {
 	s := &stepSpinner{
-		w:    w,
-		name: name,
-		done: make(chan struct{}),
+		w:     w,
+		name:  name,
+		isTTY: isTTY,
+		done:  make(chan struct{}),
 	}
 	s.wg.Add(1)
 	go s.run()
@@ -54,7 +56,9 @@ func (s *stepSpinner) run() {
 		case <-s.done:
 			return
 		case <-time.After(interval):
-			fmt.Fprintf(s.w, "\r  %s  %s  running...", spinnerFrames[i%len(spinnerFrames)], s.name)
+			frame := ansi(s.isTTY, ansiDim, spinnerFrames[i%len(spinnerFrames)])
+			suffix := ansi(s.isTTY, ansiDim, "running...")
+			fmt.Fprintf(s.w, "\r  %s  %s  %s", frame, s.name, suffix)
 			i++
 		}
 	}
