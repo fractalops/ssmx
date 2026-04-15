@@ -71,8 +71,9 @@ func New(cfg aws.Config, instanceID, region, profile string) *Engine {
 // Run executes wf against the engine's target instance. It validates inputs,
 // builds the DAG, and executes step levels concurrently. The workflow continues
 // through all levels even on failure (to allow always: cleanup steps), then
-// returns the first step error encountered.
-func (e *Engine) Run(ctx context.Context, wf *Workflow, opts RunOptions) error {
+// returns the first step error encountered. On success, the resolved workflow
+// outputs are returned (empty map when wf.Outputs is not defined).
+func (e *Engine) Run(ctx context.Context, wf *Workflow, opts RunOptions) (map[string]string, error) {
 	w := opts.Stderr
 	if w == nil {
 		w = os.Stderr
@@ -80,7 +81,7 @@ func (e *Engine) Run(ctx context.Context, wf *Workflow, opts RunOptions) error {
 
 	inputs, err := wf.ApplyInputs(opts.Inputs)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	exprCtx := ExprContext{
@@ -96,7 +97,7 @@ func (e *Engine) Run(ctx context.Context, wf *Workflow, opts RunOptions) error {
 
 	levels, err := Levels(wf.Steps)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	failedSteps := map[string]bool{}
@@ -110,7 +111,22 @@ func (e *Engine) Run(ctx context.Context, wf *Workflow, opts RunOptions) error {
 			// Do not return here — allow subsequent always: cleanup steps to run.
 		}
 	}
-	return firstErr
+
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	if len(wf.Outputs) == 0 {
+		return map[string]string{}, nil
+	}
+	resolved := make(map[string]string, len(wf.Outputs))
+	for k, expr := range wf.Outputs {
+		v, err := Resolve(expr, exprCtx)
+		if err != nil {
+			return nil, fmt.Errorf("workflow output %q: %w", k, err)
+		}
+		resolved[k] = v
+	}
+	return resolved, nil
 }
 
 // runLevel executes all steps in a DAG level concurrently and collects

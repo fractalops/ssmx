@@ -149,7 +149,7 @@ func TestEngine_RunSingleStep(t *testing.T) {
 		Steps: map[string]*Step{"greet": {Shell: "echo hello"}},
 	}
 	var buf bytes.Buffer
-	if err := e.Run(context.Background(), wf, RunOptions{Stderr: &buf}); err != nil {
+	if _, err := e.Run(context.Background(), wf, RunOptions{Stderr: &buf}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 }
@@ -162,7 +162,7 @@ func TestEngine_FailedStepReturnsError(t *testing.T) {
 		Steps: map[string]*Step{"bad": {Shell: "exit 1"}},
 	}
 	var buf bytes.Buffer
-	err := e.Run(context.Background(), wf, RunOptions{Stderr: &buf})
+	_, err := e.Run(context.Background(), wf, RunOptions{Stderr: &buf})
 	if err == nil {
 		t.Error("expected error when step fails")
 	}
@@ -185,7 +185,7 @@ func TestEngine_SkipsStepWhenDependencyFailed(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	_ = e.Run(context.Background(), wf, RunOptions{Stderr: &buf})
+	_, _ = e.Run(context.Background(), wf, RunOptions{Stderr: &buf})
 	// Only step a should run; b should be skipped.
 	if callCount != 1 {
 		t.Errorf("runner called %d times, want 1 (step b should be skipped)", callCount)
@@ -212,7 +212,7 @@ func TestEngine_AlwaysRunsAfterFailure(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	_ = e.Run(context.Background(), wf, RunOptions{Stderr: &buf})
+	_, _ = e.Run(context.Background(), wf, RunOptions{Stderr: &buf})
 	if callCount != 2 {
 		t.Errorf("runner called %d times, want 2 (cleanup should run despite failure)", callCount)
 	}
@@ -239,7 +239,7 @@ func TestEngine_IfConditionSkipsStep(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	if err := e.Run(context.Background(), wf, RunOptions{Stderr: &buf}); err != nil {
+	if _, err := e.Run(context.Background(), wf, RunOptions{Stderr: &buf}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	// "alert" should be skipped because check exited 0, so "!= 0" is false.
@@ -257,7 +257,7 @@ func TestEngine_DryRunDoesNotCallRunner(t *testing.T) {
 		Steps: map[string]*Step{"s": {Shell: "echo hi"}},
 	}
 	var buf bytes.Buffer
-	if err := e.Run(context.Background(), wf, RunOptions{DryRun: true, Stderr: &buf}); err != nil {
+	if _, err := e.Run(context.Background(), wf, RunOptions{DryRun: true, Stderr: &buf}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if runner.capturedCommands != nil {
@@ -276,8 +276,51 @@ func TestEngine_ValidatesRequiredInput(t *testing.T) {
 		Steps: map[string]*Step{"s": {Shell: "echo ${{ inputs.version }}"}},
 	}
 	var buf bytes.Buffer
-	err := e.Run(context.Background(), wf, RunOptions{Stderr: &buf})
+	_, err := e.Run(context.Background(), wf, RunOptions{Stderr: &buf})
 	if err == nil {
 		t.Error("expected error for missing required input")
+	}
+}
+
+func TestEngine_ReturnsWorkflowOutputs(t *testing.T) {
+	runner := &mockShellRunner{commandID: "cmd-1", stdout: "v1.4.2", exitCode: 0}
+	e := &Engine{instanceID: "i-0abc", runner: runner}
+	wf := &Workflow{
+		Name: "test",
+		Steps: map[string]*Step{
+			"get-version": {
+				Shell:   "cat VERSION",
+				Outputs: map[string]string{"ver": "${{ stdout }}"},
+			},
+		},
+		Outputs: map[string]string{
+			"app_version": "${{ steps.get-version.outputs.ver }}",
+		},
+	}
+	var buf bytes.Buffer
+	outputs, err := e.Run(context.Background(), wf, RunOptions{Stderr: &buf})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if outputs["app_version"] != "v1.4.2" {
+		t.Errorf("app_version = %q, want v1.4.2", outputs["app_version"])
+	}
+}
+
+func TestEngine_ReturnsNilOutputsOnFailure(t *testing.T) {
+	runner := &mockShellRunner{commandID: "cmd-1", exitCode: 1}
+	e := &Engine{instanceID: "i-0abc", runner: runner}
+	wf := &Workflow{
+		Name:    "test",
+		Steps:   map[string]*Step{"bad": {Shell: "exit 1"}},
+		Outputs: map[string]string{"result": "ok"},
+	}
+	var buf bytes.Buffer
+	outputs, err := e.Run(context.Background(), wf, RunOptions{Stderr: &buf})
+	if err == nil {
+		t.Error("expected error")
+	}
+	if outputs != nil {
+		t.Errorf("expected nil outputs on failure, got %v", outputs)
 	}
 }

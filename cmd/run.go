@@ -61,10 +61,11 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 	}
 
 	engine := workflow.New(awsCfg, inst.InstanceID, region, profile)
-	return engine.Run(ctx, wf, workflow.RunOptions{
+	_, err = engine.Run(ctx, wf, workflow.RunOptions{
 		Inputs: params,
 		DryRun: flagDryRun,
 	})
+	return err
 }
 
 func runWorkflowList() error {
