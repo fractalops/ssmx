@@ -15,6 +15,11 @@ import (
 	"github.com/fractalops/ssmx/internal/workflow"
 )
 
+// runWorkflowFleet is implemented in Task 9.
+func runWorkflowFleet(cmd *cobra.Command) error {
+	return fmt.Errorf("fleet targeting not yet implemented")
+}
+
 func runWorkflow(cmd *cobra.Command, target string) error {
 	ctx := context.Background()
 	if flagTimeout > 0 {

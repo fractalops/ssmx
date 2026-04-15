@@ -32,6 +32,7 @@ var (
 	flagWorkflows    bool
 	flagWorkflowInfo string
 	flagDryRun       bool
+	flagConcurrency  int // --concurrency N; 0 = unlimited
 )
 
 type rootAction int
@@ -50,6 +51,7 @@ const (
 	actionRunMissingTarget     // --run set but no positional target given
 	actionWorkflows            // --workflows: list available workflows
 	actionWorkflowInfo         // --workflow-info <name>: show workflow schema
+	actionRunFleet             // --run with --tag flag and no positional instance
 )
 
 type rootArgs struct {
@@ -64,6 +66,7 @@ type rootArgs struct {
 // by cobra's ArgsLenAtDash().
 func parseRootArgs(interactive, list, configure, proxy, hasForwards, health bool, args []string, dashAt int,
 	run string, workflows bool, params []string, workflowInfo string, dryRun bool,
+	tags []string, concurrency int,
 ) rootArgs {
 	if workflows {
 		return rootArgs{action: actionWorkflows}
@@ -73,6 +76,9 @@ func parseRootArgs(interactive, list, configure, proxy, hasForwards, health bool
 	}
 	if run != "" {
 		if len(args) == 0 {
+			if len(tags) > 0 {
+				return rootArgs{action: actionRunFleet}
+			}
 			return rootArgs{action: actionRunMissingTarget}
 		}
 		return rootArgs{action: actionRun, target: args[0]}
@@ -137,6 +143,7 @@ var rootCmd = &cobra.Command{
 			flagProxy, len(flagForwards) > 0, flagHealth,
 			args, cmd.ArgsLenAtDash(),
 			flagRun, flagWorkflows, flagParams, flagWorkflowInfo, flagDryRun,
+			lsFlagTags, flagConcurrency,
 		)
 		switch parsed.action {
 		case actionHelp:
@@ -161,8 +168,10 @@ var rootCmd = &cobra.Command{
 			return runForward(cmd, parsed.target, forwards, flagPersist)
 		case actionHealth:
 			return runHealth(cmd, parsed.target)
+		case actionRunFleet:
+			return runWorkflowFleet(cmd)
 		case actionRunMissingTarget:
-			return fmt.Errorf("--run requires a target instance (e.g. ssmx web-prod --run deploy)")
+			return runWorkflowFleet(cmd)
 		case actionRun:
 			return runWorkflow(cmd, parsed.target)
 		case actionWorkflows:
@@ -218,5 +227,6 @@ func init() {
 	rootCmd.Flags().BoolVar(&flagWorkflows, "workflows", false, "list available workflows")
 	rootCmd.Flags().StringVar(&flagWorkflowInfo, "workflow-info", "", "show schema for a workflow")
 	rootCmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "print resolved steps without executing")
+	rootCmd.Flags().IntVar(&flagConcurrency, "concurrency", 0, "max instances to run concurrently (0 = unlimited)")
 	_ = rootCmd.Flags().MarkHidden("proxy")
 }
