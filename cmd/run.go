@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/spf13/cobra"
 
 	awsclient "github.com/fractalops/ssmx/internal/aws"
@@ -15,9 +16,97 @@ import (
 	"github.com/fractalops/ssmx/internal/workflow"
 )
 
-// runWorkflowFleet is implemented in Task 9.
+// runWorkflowFleet resolves a fleet of target instances and runs the workflow
+// against all of them concurrently. Fleet sources, in priority order:
+//  1. --tag flags (override workflow targets:)
+//  2. workflow targets: block
+//
+// A positional instance arg always routes to runWorkflow instead (single-instance).
 func runWorkflowFleet(cmd *cobra.Command) error {
-	return fmt.Errorf("fleet targeting not yet implemented")
+	ctx := context.Background()
+	if flagTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, flagTimeout)
+		defer cancel()
+	}
+
+	awsCfg, err := awsclient.NewConfig(ctx, flagProfile, flagRegion)
+	if err != nil {
+		return err
+	}
+	region := awsCfg.Region
+	profile := flagProfile
+	if profile == "" {
+		profile = defaultProfile
+	}
+
+	wf, err := workflow.Load(flagRun)
+	if err != nil {
+		return err
+	}
+
+	// Resolve effective tags: --tag wins over workflow targets: block.
+	effectiveTags := flagTags
+	if len(effectiveTags) == 0 && wf.Targets != nil {
+		for k, v := range wf.Targets.Tags {
+			effectiveTags = append(effectiveTags, k+"="+v)
+		}
+	}
+	if len(effectiveTags) == 0 {
+		return fmt.Errorf("--run %q requires a target instance (e.g. ssmx web-prod --run %s) or --tag flag (workflow has no targets: block)", wf.Name, wf.Name)
+	}
+
+	instances, err := resolveFleet(ctx, awsCfg, effectiveTags)
+	if err != nil {
+		return err
+	}
+
+	// Resolve concurrency: --concurrency wins over targets.max-concurrency.
+	concurrency := flagConcurrency
+	if concurrency == 0 && wf.Targets != nil {
+		concurrency = wf.Targets.MaxConcurrency
+	}
+
+	params := make(map[string]string, len(flagParams))
+	for _, p := range flagParams {
+		parts := strings.SplitN(p, "=", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid --param %q (expected key=value)", p)
+		}
+		params[parts[0]] = parts[1]
+	}
+
+	fe := workflow.NewFleetEngineWithConfig(awsCfg, instances, concurrency, region, profile)
+	return fe.Run(ctx, wf, workflow.RunOptions{
+		Inputs: params,
+		DryRun: flagDryRun,
+	})
+}
+
+// resolveFleet returns SSM-online instances matching the given tag filters.
+// tags is a slice of "key=value" strings; all must match (ANDed).
+// Returns an error if zero online instances match.
+func resolveFleet(ctx context.Context, awsCfg aws.Config, tags []string) ([]awsclient.Instance, error) {
+	instances, err := awsclient.ListInstances(ctx, awsCfg, tags)
+	if err != nil {
+		return nil, fmt.Errorf("listing instances: %w", err)
+	}
+	ssmInfo, err := awsclient.ListManagedInstances(ctx, awsCfg)
+	if err != nil {
+		return nil, fmt.Errorf("fetching SSM info: %w", err)
+	}
+	awsclient.MergeSSMInfo(instances, ssmInfo)
+
+	var online []awsclient.Instance
+	for _, inst := range instances {
+		if inst.SSMStatus == "online" {
+			online = append(online, inst)
+		}
+	}
+	if len(online) == 0 {
+		return nil, fmt.Errorf("no SSM-online instances matched the given tags: %v", tags)
+	}
+	return online, nil
 }
 
 func runWorkflow(cmd *cobra.Command, target string) error {

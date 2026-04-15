@@ -8,8 +8,24 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+
 	awsclient "github.com/fractalops/ssmx/internal/aws"
 )
+
+// NewFleetEngineWithConfig creates a FleetEngine for production use. Each
+// per-instance Engine is created from the provided AWS config, region, and profile.
+func NewFleetEngineWithConfig(cfg aws.Config, instances []awsclient.Instance, maxConcurrency int, region, profile string) *FleetEngine {
+	return &FleetEngine{
+		instances:      instances,
+		maxConcurrency: maxConcurrency,
+		region:         region,
+		profile:        profile,
+		newEngine: func(instanceID string) *Engine {
+			return New(cfg, instanceID, region, profile)
+		},
+	}
+}
 
 // FleetEngine runs a workflow concurrently against multiple EC2 instances.
 // Each instance gets its own Engine; output is prefixed with the instance name
