@@ -11,14 +11,18 @@ import (
 //
 // Uses Kahn's topological sort algorithm. Returns an error if any
 // needs reference is undefined or a dependency cycle is detected.
+// Returns nil, nil for empty input.
 func Levels(steps map[string]*Step) ([][]string, error) {
 	if len(steps) == 0 {
 		return nil, nil
 	}
 
-	// Validate all needs references exist.
+	// Validate all needs references exist, including self-references.
 	for name, step := range steps {
 		for _, dep := range step.Needs {
+			if dep == name {
+				return nil, fmt.Errorf("step %q depends on itself", name)
+			}
 			if _, ok := steps[dep]; !ok {
 				return nil, fmt.Errorf("step %q needs undefined step %q", name, dep)
 			}
@@ -43,7 +47,10 @@ func Levels(steps map[string]*Step) ([][]string, error) {
 	processed := 0
 
 	for processed < len(steps) {
-		// Collect steps with no unresolved deps and remove them from inDeg.
+		// Collect steps with no unresolved deps. Deleting from inDeg marks them
+		// as scheduled (visited); per Go spec, deleting map keys during range is
+		// safe — unvisited keys that get deleted simply won't appear in later
+		// iterations.
 		var ready []string
 		for name, deg := range inDeg {
 			if deg == 0 {
@@ -52,7 +59,13 @@ func Levels(steps map[string]*Step) ([][]string, error) {
 			}
 		}
 		if len(ready) == 0 {
-			return nil, fmt.Errorf("workflow contains a dependency cycle")
+			// Any steps remaining in inDeg are part of a cycle.
+			cyclic := make([]string, 0, len(inDeg))
+			for name := range inDeg {
+				cyclic = append(cyclic, name)
+			}
+			sort.Strings(cyclic)
+			return nil, fmt.Errorf("workflow contains a dependency cycle involving: %v", cyclic)
 		}
 		sort.Strings(ready) // deterministic ordering
 		processed += len(ready)

@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -98,6 +99,20 @@ func TestLevels_CycleDetected(t *testing.T) {
 	_, err := Levels(steps)
 	if err == nil {
 		t.Error("expected cycle error")
+	} else if !strings.Contains(err.Error(), "cycle") {
+		t.Errorf("error should mention cycle, got: %v", err)
+	}
+}
+
+func TestLevels_SelfDependency(t *testing.T) {
+	steps := map[string]*Step{
+		"a": {Shell: "echo a", Needs: []string{"a"}},
+	}
+	_, err := Levels(steps)
+	if err == nil {
+		t.Error("expected error for self-dependency")
+	} else if !strings.Contains(err.Error(), "itself") {
+		t.Errorf("error should mention self-dependency, got: %v", err)
 	}
 }
 
@@ -108,6 +123,8 @@ func TestLevels_UndefinedDependency(t *testing.T) {
 	_, err := Levels(steps)
 	if err == nil {
 		t.Error("expected undefined dep error")
+	} else if !strings.Contains(err.Error(), "undefined") {
+		t.Errorf("error should mention undefined, got: %v", err)
 	}
 }
 
