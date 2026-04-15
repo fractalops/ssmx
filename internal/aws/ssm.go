@@ -228,7 +228,9 @@ func WaitForShellCommand(ctx context.Context, cfg aws.Config, instanceID, comman
 			return "", "", -1, fmt.Errorf("SSM command timed out on %s", instanceID)
 		case ssmtypes.CommandInvocationStatusCancelled:
 			return "", "", -1, fmt.Errorf("SSM command cancelled on %s", instanceID)
-		// Pending, InProgress, Delayed: keep polling.
+		// Pending, InProgress, Delayed, Cancelling: keep polling.
+		case ssmtypes.CommandInvocationStatusCancelling:
+			// transient — keep polling until Cancelled is returned
 		}
 	}
 }

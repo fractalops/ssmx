@@ -16,6 +16,11 @@ import (
 
 func runWorkflow(cmd *cobra.Command, target string) error {
 	ctx := context.Background()
+	if flagTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, flagTimeout)
+		defer cancel()
+	}
 
 	awsCfg, err := awsclient.NewConfig(ctx, flagProfile, flagRegion)
 	if err != nil {
@@ -118,7 +123,8 @@ func runWorkflowInfo(name string) error {
 	fmt.Println("\nsteps:")
 	levels, err := workflow.Levels(wf.Steps)
 	if err != nil {
-		// Fallback: print in map order if DAG fails.
+		// Workflow has a DAG error (e.g. cycle) — warn and fall back to map order.
+		fmt.Fprintf(os.Stderr, "warning: step ordering invalid (%v); fix the workflow before running\n", err)
 		for stepName, step := range wf.Steps {
 			fmt.Printf("  %-24s  [%s]\n", stepName, step.Kind())
 		}
