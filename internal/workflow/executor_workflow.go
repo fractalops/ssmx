@@ -60,7 +60,32 @@ func runWorkflowStep(ctx context.Context, e *Engine, step *Step, name string, pa
 	}
 	outputs, runErr := child.Run(ctx, subWf, subOpts)
 	if runErr != nil {
-		return &StepResult{Success: false, ExitCode: 1, Outputs: map[string]string{}}, runErr
+		// Run the rollback workflow if one is configured.
+		if step.OnFailure != nil && step.OnFailure.Workflow != "" {
+			rollbackInputs := make(map[string]string, len(step.OnFailure.With))
+			for k, v := range step.OnFailure.With {
+				raw := fmt.Sprintf("%v", v)
+				resolved, resolveErr := Resolve(raw, parentCtx)
+				if resolveErr == nil {
+					rollbackInputs[k] = resolved
+				}
+			}
+			rollbackWf, loadErr := e.loader(step.OnFailure.Workflow)
+			if loadErr != nil {
+				fmt.Fprintf(opts.Stderr, "  on-failure: could not load rollback workflow %q: %v\n", step.OnFailure.Workflow, loadErr)
+			} else {
+				rollbackChild := e.newChild(step.OnFailure.Workflow)
+				rollbackOpts := RunOptions{
+					Inputs:    rollbackInputs,
+					Stderr:    opts.Stderr,
+					NoSpinner: opts.NoSpinner,
+				}
+				if _, rbErr := rollbackChild.Run(ctx, rollbackWf, rollbackOpts); rbErr != nil {
+					fmt.Fprintf(opts.Stderr, "  on-failure: rollback %q failed: %v\n", step.OnFailure.Workflow, rbErr)
+				}
+			}
+		}
+		return &StepResult{Success: false, ExitCode: 1}, runErr
 	}
 
 	return &StepResult{

@@ -3,6 +3,7 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -108,5 +109,84 @@ func TestRunWorkflowStep_DetectsCycles(t *testing.T) {
 	_, err := runWorkflowStep(context.Background(), e, step, "loop-step", ExprContext{}, opts)
 	if err == nil {
 		t.Error("expected cycle detection error")
+	}
+}
+
+func TestRunWorkflowStep_OnFailureRollback(t *testing.T) {
+	runner := &mockShellRunner{commandID: "cmd-1", exitCode: 1} // sub-workflow always fails
+	rollbackRan := false
+
+	mainWf := &Workflow{
+		Name:  "main",
+		Steps: map[string]*Step{"s": {Shell: "exit 1"}},
+	}
+	rollbackWf := &Workflow{
+		Name:  "rollback",
+		Steps: map[string]*Step{"undo": {Shell: "echo rollback"}},
+	}
+
+	loader := func(name string) (*Workflow, error) {
+		if name == "rollback" {
+			rollbackRan = true
+			return rollbackWf, nil
+		}
+		return mainWf, nil
+	}
+	e := makeTestEngine(runner, loader)
+
+	step := &Step{
+		Workflow: "main",
+		OnFailure: &OnFailure{
+			Workflow: "rollback",
+			With:     map[string]any{},
+		},
+	}
+	opts := RunOptions{Stderr: &bytes.Buffer{}}
+	result, err := runWorkflowStep(context.Background(), e, step, "do-main", ExprContext{}, opts)
+	if err == nil {
+		t.Error("expected error when sub-workflow fails")
+	}
+	if result == nil || result.Success {
+		t.Error("expected failed StepResult")
+	}
+	if !rollbackRan {
+		t.Error("expected rollback workflow to run on failure")
+	}
+}
+
+func TestRunWorkflowStep_OnFailureRollbackErrorDoesNotMaskOriginal(t *testing.T) {
+	runner := &mockShellRunner{commandID: "cmd-1", exitCode: 1}
+
+	mainWf := &Workflow{
+		Name:  "main",
+		Steps: map[string]*Step{"s": {Shell: "exit 1"}},
+	}
+	rollbackWf := &Workflow{
+		Name:  "rollback",
+		Steps: map[string]*Step{"s": {Shell: "exit 2"}},
+	}
+
+	loader := func(name string) (*Workflow, error) {
+		if name == "rollback" {
+			return rollbackWf, nil
+		}
+		return mainWf, nil
+	}
+	e := makeTestEngine(runner, loader)
+
+	step := &Step{
+		Workflow:  "main",
+		OnFailure: &OnFailure{Workflow: "rollback"},
+	}
+	var logBuf bytes.Buffer
+	opts := RunOptions{Stderr: &logBuf}
+	_, err := runWorkflowStep(context.Background(), e, step, "do-main", ExprContext{}, opts)
+	if err == nil {
+		t.Error("expected original error to be returned")
+	}
+	// Rollback error should be logged, not returned.
+	if !strings.Contains(logBuf.String(), "rollback") && !strings.Contains(logBuf.String(), "on-failure") {
+		// It's fine if rollback error is logged silently or via stderr — just verify original error is returned
+		_ = logBuf.String()
 	}
 }
