@@ -133,11 +133,16 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 		snapSteps[k] = v
 	}
 
-	// Use an animated spinner only when writing to a real terminal and the
-	// level has a single step. Multi-step levels run concurrently; mixing \r
-	// rewrites from several goroutines would corrupt the output.
+	// Spinner is only used for single-step levels — \r rewrites from concurrent
+	// goroutines would corrupt output. For multi-step TTY levels we still stream
+	// output, but protect all writes with a shared mutex so lines don't interleave.
 	isTTY := isTerminalWriter(w)
 	useSpinner := isTTY && len(stepNames) == 1
+
+	stepW := io.Writer(w)
+	if isTTY && len(stepNames) > 1 {
+		stepW = &lockedWriter{w: w}
+	}
 
 	g, gctx := errgroup.WithContext(ctx)
 	for _, name := range stepNames {
@@ -149,7 +154,7 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 		// in a level to complete even if one errors, which is required for
 		// always: cleanup steps.
 		g.Go(func() error {
-			res, skip, err := e.runStep(gctx, step, name, snap, failedSteps, opts, w, useSpinner)
+			res, skip, err := e.runStep(gctx, step, name, snap, failedSteps, opts, stepW, isTTY, useSpinner)
 			ch <- outcome{name: name, result: res, err: err, skipped: skip}
 			return nil
 		})
@@ -188,10 +193,9 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 }
 
 // runStep executes a single step. Returns (result, skipped, error).
-// useSpinner enables the animated braille spinner + live stdout streaming;
-// it should only be true when w is a TTY and the step's level has one step.
-func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx ExprContext, failedSteps map[string]bool, opts RunOptions, w io.Writer, useSpinner bool) (*StepResult, bool, error) {
-	isTTY := isTerminalWriter(w)
+// isTTY reflects the original output writer (before any mutex wrapping).
+// useSpinner should only be true for single-step TTY levels.
+func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx ExprContext, failedSteps map[string]bool, opts RunOptions, w io.Writer, isTTY bool, useSpinner bool) (*StepResult, bool, error) {
 
 	// Skip if any dependency failed (unless always: true).
 	if !step.Always {
@@ -221,11 +225,11 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 		return &StepResult{Success: true}, false, nil
 	}
 
-	// Set up spinner and live-output streaming when on a TTY.
-	// stopSpinner is always callable (no-op when spinner is not active).
+	// Set up output streaming. stopSpinner is always callable (no-op when not active).
 	var progress io.Writer
 	stopSpinner := func() {}
 	if useSpinner {
+		// Single-step TTY level: animated spinner, output stops it on first write.
 		fmt.Fprintf(w, "  %s  %s  %s", ansi(isTTY, ansiDim, "⠋"), name, ansi(isTTY, ansiDim, "running...")) // no trailing newline — spinner overwrites via \r
 		sp := newStepSpinner(w, name, isTTY)
 		var stopOnce sync.Once
@@ -236,10 +240,14 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 			})
 		}
 		defer stopSpinner() // safety net: ensures stop on error/unsupported-kind paths
-		// progressWriter stops the spinner on first write and indents output.
 		progress = newProgressWriter(w, stopSpinner)
 	} else {
 		fmt.Fprintf(w, "  %s  %s  %s\n", ansi(isTTY, ansiDim, "⠋"), name, ansi(isTTY, ansiDim, "running..."))
+		if isTTY {
+			// Multi-step TTY level: stream output without spinner.
+			// w is already mutex-wrapped by runLevel so concurrent writes are safe.
+			progress = newProgressWriter(w, func() {})
+		}
 	}
 
 	switch step.Kind() {

@@ -81,6 +81,20 @@ func (s *stepSpinner) ClearLine() {
 	fmt.Fprintf(s.w, "\r%s\r", strings.Repeat(" ", width))
 }
 
+// lockedWriter serialises concurrent writes from multiple goroutines sharing
+// a terminal so that lines from different steps in the same DAG level do not
+// interleave at the byte level.
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (lw *lockedWriter) Write(b []byte) (int, error) {
+	lw.mu.Lock()
+	defer lw.mu.Unlock()
+	return lw.w.Write(b)
+}
+
 // progressWriter indents step stdout and stops the spinner on first write.
 // Subsequent writes go directly to the underlying writer without the stop
 // overhead (the spinner is already gone by then).
