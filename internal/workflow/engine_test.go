@@ -342,6 +342,37 @@ func TestEngine_LoaderInjectable(t *testing.T) {
 	}
 }
 
+func TestEngine_WorkflowStepComposition(t *testing.T) {
+	runner := &mockShellRunner{commandID: "cmd-1", exitCode: 0, stdout: "from-sub"}
+	subWf := &Workflow{
+		Name: "sub",
+		Steps: map[string]*Step{
+			"s": {Shell: "echo from-sub"},
+		},
+		Outputs: map[string]string{"msg": "${{ steps.s.stdout }}"},
+	}
+	e := &Engine{
+		instanceID: "i-0abc",
+		runner:     runner,
+		callStack:  []string{},
+		loader:     func(_ string) (*Workflow, error) { return subWf, nil },
+	}
+	wf := &Workflow{
+		Name: "parent",
+		Steps: map[string]*Step{
+			"call-sub": {Workflow: "sub"},
+			"use-output": {
+				Shell: "echo ${{ steps.call-sub.outputs.msg }}",
+				Needs: []string{"call-sub"},
+			},
+		},
+	}
+	var buf bytes.Buffer
+	if _, err := e.Run(context.Background(), wf, RunOptions{Stderr: &buf}); err != nil {
+		t.Fatalf("Run with workflow: step: %v", err)
+	}
+}
+
 func TestEngine_NewChild_AppendsCallStack(t *testing.T) {
 	runner := &mockShellRunner{}
 	e := &Engine{

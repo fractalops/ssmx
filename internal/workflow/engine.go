@@ -259,7 +259,11 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 	}
 
 	if opts.DryRun {
-		resolved, _ := Resolve(step.Shell, exprCtx)
+		script := step.Shell
+		if step.Workflow != "" {
+			script = step.Workflow
+		}
+		resolved, _ := Resolve(script, exprCtx)
 		fmt.Fprintf(w, "  %s  %s  [dry-run] %s: %s\n", ansi(isTTY, ansiDim, "·"), name, step.Kind(), resolved)
 		return &StepResult{Success: true}, false, nil
 	}
@@ -304,6 +308,18 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 			fmt.Fprintf(w, "  %s  %s\n", ansi(isTTY, ansiGreen, "✓"), name)
 		} else {
 			fmt.Fprintf(w, "  %s  %s  exit code %d\n", ansi(isTTY, ansiRed, "✗"), name, result.ExitCode)
+		}
+		return result, false, nil
+	case "workflow":
+		stopSpinner()
+		result, err := runWorkflowStep(ctx, e, step, name, exprCtx, opts)
+		if err != nil {
+			return nil, false, err
+		}
+		if result.Success {
+			fmt.Fprintf(w, "  %s  %s\n", ansi(isTTY, ansiGreen, "✓"), name)
+		} else {
+			fmt.Fprintf(w, "  %s  %s  failed\n", ansi(isTTY, ansiRed, "✗"), name)
 		}
 		return result, false, nil
 	default:
