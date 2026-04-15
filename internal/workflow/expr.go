@@ -141,6 +141,8 @@ func resolveOne(expr string, ctx ExprContext) (string, error) {
 			return strconv.Itoa(res.ExitCode), nil
 		case "stdout":
 			return res.Stdout, nil
+		case "stderr":
+			return res.Stderr, nil
 		default:
 			if strings.HasPrefix(field, "outputs.") {
 				key := strings.TrimPrefix(field, "outputs.")

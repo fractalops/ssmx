@@ -80,6 +80,19 @@ func TestResolve_StepsStdout(t *testing.T) {
 	}
 }
 
+func TestResolve_StepsStderr(t *testing.T) {
+	ctx := ExprContext{
+		Steps: map[string]*StepResult{"s": {Stderr: "error output"}},
+	}
+	got, err := Resolve("${{ steps.s.stderr }}", ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "error output" {
+		t.Errorf("got %q, want error output", got)
+	}
+}
+
 func TestResolve_Target(t *testing.T) {
 	ctx := ExprContext{
 		Target: TargetInfo{InstanceID: "i-0abc123", PrivateIP: "10.0.1.5", Name: "web-1"},
