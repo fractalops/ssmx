@@ -324,3 +324,42 @@ func TestEngine_ReturnsNilOutputsOnFailure(t *testing.T) {
 		t.Errorf("expected nil outputs on failure, got %v", outputs)
 	}
 }
+
+func TestEngine_LoaderInjectable(t *testing.T) {
+	runner := &mockShellRunner{commandID: "cmd-1", exitCode: 0}
+	e := &Engine{
+		instanceID: "i-0abc",
+		runner:     runner,
+		callStack:  []string{},
+		loader: func(name string) (*Workflow, error) {
+			return &Workflow{Name: name, Steps: map[string]*Step{"s": {Shell: "echo ok"}}}, nil
+		},
+	}
+	wf := &Workflow{Name: "parent", Steps: map[string]*Step{"s": {Shell: "echo hi"}}}
+	var buf bytes.Buffer
+	if _, err := e.Run(context.Background(), wf, RunOptions{Stderr: &buf}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}
+
+func TestEngine_NewChild_AppendsCallStack(t *testing.T) {
+	runner := &mockShellRunner{}
+	e := &Engine{
+		instanceID: "i-0abc",
+		runner:     runner,
+		callStack:  []string{"parent"},
+		loader:     func(_ string) (*Workflow, error) { return nil, nil },
+	}
+	child := e.newChild("child-wf")
+	if len(child.callStack) != 2 {
+		t.Fatalf("callStack len = %d, want 2", len(child.callStack))
+	}
+	if child.callStack[0] != "parent" || child.callStack[1] != "child-wf" {
+		t.Errorf("callStack = %v, want [parent child-wf]", child.callStack)
+	}
+	// Mutating parent's stack must not affect child
+	e.callStack = append(e.callStack, "intruder")
+	if len(child.callStack) != 2 {
+		t.Error("child callStack was mutated when parent changed")
+	}
+}

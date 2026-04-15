@@ -18,7 +18,9 @@ type Engine struct {
 	instanceID string
 	region     string
 	profile    string
-	runner     shellRunner // injectable for tests; set by New
+	runner     shellRunner                    // injectable for tests; set by New
+	callStack  []string                       // workflow names on current call path; detects cycles
+	loader     func(string) (*Workflow, error) // injectable; defaults to Load
 }
 
 // RunOptions configures a workflow execution.
@@ -65,6 +67,26 @@ func New(cfg aws.Config, instanceID, region, profile string) *Engine {
 		region:     region,
 		profile:    profile,
 		runner:     &awsShellRunner{cfg: cfg},
+		callStack:  []string{},
+		loader:     Load,
+	}
+}
+
+// newChild returns an Engine for running a sub-workflow. It copies the
+// current engine's configuration and appends workflowName to the call stack.
+// A fresh slice is allocated so parent and child stacks are independent.
+func (e *Engine) newChild(workflowName string) *Engine {
+	stack := make([]string, len(e.callStack)+1)
+	copy(stack, e.callStack)
+	stack[len(e.callStack)] = workflowName
+	return &Engine{
+		cfg:        e.cfg,
+		instanceID: e.instanceID,
+		region:     e.region,
+		profile:    e.profile,
+		runner:     e.runner,
+		callStack:  stack,
+		loader:     e.loader,
 	}
 }
 
