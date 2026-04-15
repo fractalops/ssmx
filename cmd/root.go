@@ -47,6 +47,7 @@ const (
 	actionForward              // one or more -L flags
 	actionHealth               // --health flag
 	actionRun                  // --run <workflow> with positional target
+	actionRunMissingTarget     // --run set but no positional target given
 	actionWorkflows            // --workflows: list available workflows
 	actionWorkflowInfo         // --workflow-info <name>: show workflow schema
 )
@@ -70,7 +71,10 @@ func parseRootArgs(interactive, list, configure, proxy, hasForwards, health bool
 	if workflowInfo != "" {
 		return rootArgs{action: actionWorkflowInfo, target: workflowInfo}
 	}
-	if run != "" && len(args) > 0 {
+	if run != "" {
+		if len(args) == 0 {
+			return rootArgs{action: actionRunMissingTarget}
+		}
 		return rootArgs{action: actionRun, target: args[0]}
 	}
 	if proxy && len(args) >= 2 {
@@ -157,6 +161,8 @@ var rootCmd = &cobra.Command{
 			return runForward(cmd, parsed.target, forwards, flagPersist)
 		case actionHealth:
 			return runHealth(cmd, parsed.target)
+		case actionRunMissingTarget:
+			return fmt.Errorf("--run requires a target instance (e.g. ssmx web-prod --run deploy)")
 		case actionRun:
 			return runWorkflow(cmd, parsed.target)
 		case actionWorkflows:

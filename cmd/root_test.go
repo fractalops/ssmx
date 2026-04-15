@@ -156,3 +156,11 @@ func TestParseRootArgs_WorkflowInfo(t *testing.T) {
 		t.Errorf("target = %q, want deploy", got.target)
 	}
 }
+
+func TestParseRootArgs_RunMissingTarget(t *testing.T) {
+	got := parseRootArgs(false, false, false, false, false, false, []string{}, -1,
+		"deploy", false, []string{}, "", false)
+	if got.action != actionRunMissingTarget {
+		t.Errorf("action = %v, want actionRunMissingTarget", got.action)
+	}
+}

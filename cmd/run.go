@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -88,7 +89,13 @@ func runWorkflowInfo(name string) error {
 
 	if len(wf.Inputs) > 0 {
 		fmt.Println("\ninputs:")
-		for inputName, input := range wf.Inputs {
+		inputNames := make([]string, 0, len(wf.Inputs))
+		for n := range wf.Inputs {
+			inputNames = append(inputNames, n)
+		}
+		sort.Strings(inputNames)
+		for _, inputName := range inputNames {
+			input := wf.Inputs[inputName]
 			req := ""
 			if input.Required {
 				req = " (required)"
