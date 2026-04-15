@@ -218,7 +218,13 @@ func TestEngine_AlwaysRunsAfterFailure(t *testing.T) {
 }
 
 func TestEngine_IfConditionSkipsStep(t *testing.T) {
-	runner := &mockShellRunner{commandID: "cmd-1", exitCode: 0}
+	callCount := 0
+	runner := &countingShellRunner{
+		fn: func() (string, string, int, error) {
+			callCount++
+			return "", "", 0, nil
+		},
+	}
 	e := &Engine{instanceID: "i-0abc", runner: runner}
 	wf := &Workflow{
 		Name: "test",
@@ -236,9 +242,9 @@ func TestEngine_IfConditionSkipsStep(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	// "alert" should be skipped because check exited 0, so "!= 0" is false.
-	// runner is called only once (for "check").
-	if runner.capturedCommands == nil {
-		t.Error("expected runner to be called for check step")
+	// Runner should be called exactly once (for "check" only).
+	if callCount != 1 {
+		t.Errorf("runner called %d times, want 1 (alert should be skipped)", callCount)
 	}
 }
 

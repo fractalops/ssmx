@@ -93,17 +93,31 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 	}
 	ch := make(chan outcome, len(stepNames))
 
+	// Build a stable snapshot of Steps for all goroutines in this level.
+	// Shallow-copying the map (not the struct) is enough because StepResult
+	// values are never mutated after creation. Without this, all goroutines
+	// would share the same live map that the serial post-level loop writes to.
+	snapSteps := make(map[string]*StepResult, len(exprCtx.Steps))
+	for k, v := range exprCtx.Steps {
+		snapSteps[k] = v
+	}
+
 	g, gctx := errgroup.WithContext(ctx)
 	for _, name := range stepNames {
 		name := name
 		step := wf.Steps[name]
-		snap := *exprCtx // snapshot — goroutines read; writes happen after g.Wait()
+		snap := *exprCtx  // copy struct fields (Inputs, Env, Target, etc.)
+		snap.Steps = snapSteps // replace with stable snapshot
+		// Goroutines return nil; errors are sent via ch. This allows all steps
+		// in a level to complete even if one errors, which is required for
+		// always: cleanup steps.
 		g.Go(func() error {
 			res, skip, err := e.runStep(gctx, step, name, snap, failedSteps, opts, w)
 			ch <- outcome{name: name, result: res, err: err, skipped: skip}
 			return nil
 		})
 	}
+	// g.Wait() return is nil by design (goroutines always return nil; errors go via ch).
 	_ = g.Wait()
 	close(ch)
 
@@ -124,7 +138,11 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 		if !o.result.Success {
 			failedSteps[o.name] = true
 			step := wf.Steps[o.name]
-			if !step.Always && firstErr == nil {
+			if step.Always {
+				// Log cleanup step failures so operators can see them, but do not
+				// let them mask the original error that triggered cleanup.
+				fmt.Fprintf(w, "  !  %s  cleanup failed (exit code %d)\n", o.name, o.result.ExitCode)
+			} else if firstErr == nil {
 				firstErr = fmt.Errorf("step %q failed (exit code %d)", o.name, o.result.ExitCode)
 			}
 		}
