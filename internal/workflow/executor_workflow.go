@@ -18,7 +18,7 @@ func runWorkflowStep(ctx context.Context, e *Engine, step *Step, name string, pa
 	// Cycle detection: refuse if the sub-workflow is already on the call stack.
 	for _, ancestor := range e.callStack {
 		if ancestor == wfName {
-			path := strings.Join(append(e.callStack, wfName), " → ")
+			path := strings.Join(e.callStack, " → ") + " → " + wfName
 			return nil, fmt.Errorf("step %q: workflow cycle detected: %s", name, path)
 		}
 	}
