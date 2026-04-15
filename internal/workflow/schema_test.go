@@ -160,3 +160,46 @@ func TestStepKind(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyInputs_UnknownKeyReturnsError(t *testing.T) {
+	wf := &Workflow{
+		Name:  "w",
+		Steps: map[string]*Step{"s": {Shell: "echo x"}},
+	}
+	_, err := wf.ApplyInputs(map[string]string{"unknown": "value"})
+	if err == nil {
+		t.Error("expected error for unknown input key")
+	}
+}
+
+func TestValidate_ParallelSubStepNoKind(t *testing.T) {
+	wf := &Workflow{
+		Name: "w",
+		Steps: map[string]*Step{
+			"fetch": {
+				Parallel: map[string]*Step{
+					"bad": {}, // no kind
+				},
+			},
+		},
+	}
+	if err := wf.Validate(); err == nil {
+		t.Error("expected error for parallel sub-step with no kind")
+	}
+}
+
+func TestValidate_ParallelSubStepMultipleKinds(t *testing.T) {
+	wf := &Workflow{
+		Name: "w",
+		Steps: map[string]*Step{
+			"fetch": {
+				Parallel: map[string]*Step{
+					"bad": {Shell: "echo", SSMDoc: "AWS-RunPatchBaseline"},
+				},
+			},
+		},
+	}
+	if err := wf.Validate(); err == nil {
+		t.Error("expected error for parallel sub-step with multiple kinds")
+	}
+}

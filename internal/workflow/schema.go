@@ -109,6 +109,27 @@ func (wf *Workflow) Validate() error {
 		if kinds > 1 {
 			return fmt.Errorf("step %q has more than one kind field set", name)
 		}
+
+		if step.Parallel != nil {
+			for subName, subStep := range step.Parallel {
+				subKinds := 0
+				if subStep.Shell != "" {
+					subKinds++
+				}
+				if subStep.SSMDoc != "" {
+					subKinds++
+				}
+				if subStep.Workflow != "" {
+					subKinds++
+				}
+				if subKinds == 0 {
+					return fmt.Errorf("parallel sub-step %q in %q has no kind", subName, name)
+				}
+				if subKinds > 1 {
+					return fmt.Errorf("parallel sub-step %q in %q has more than one kind", subName, name)
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -116,6 +137,12 @@ func (wf *Workflow) Validate() error {
 // ApplyInputs validates that all required inputs are provided, applies
 // defaults for omitted optional inputs, and returns the resolved input map.
 func (wf *Workflow) ApplyInputs(provided map[string]string) (map[string]string, error) {
+	// Reject unknown input keys (catches typos before silent discard).
+	for name := range provided {
+		if _, ok := wf.Inputs[name]; !ok {
+			return nil, fmt.Errorf("unknown input %q (not declared in workflow inputs)", name)
+		}
+	}
 	resolved := make(map[string]string, len(wf.Inputs))
 	for name, input := range wf.Inputs {
 		if v, ok := provided[name]; ok {
