@@ -32,7 +32,8 @@ var (
 	flagWorkflows    bool
 	flagWorkflowInfo string
 	flagDryRun       bool
-	flagConcurrency  int // --concurrency N; 0 = unlimited
+	flagConcurrency  int      // --concurrency N; 0 = unlimited
+	flagTags         []string // --tag key=value; used by --list filtering and --run fleet targeting
 )
 
 type rootAction int
@@ -143,7 +144,7 @@ var rootCmd = &cobra.Command{
 			flagProxy, len(flagForwards) > 0, flagHealth,
 			args, cmd.ArgsLenAtDash(),
 			flagRun, flagWorkflows, flagParams, flagWorkflowInfo, flagDryRun,
-			lsFlagTags, flagConcurrency,
+			flagTags, flagConcurrency,
 		)
 		switch parsed.action {
 		case actionHelp:
@@ -228,5 +229,6 @@ func init() {
 	rootCmd.Flags().StringVar(&flagWorkflowInfo, "workflow-info", "", "show schema for a workflow")
 	rootCmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "print resolved steps without executing")
 	rootCmd.Flags().IntVar(&flagConcurrency, "concurrency", 0, "max instances to run concurrently (0 = unlimited)")
+	rootCmd.Flags().StringArrayVar(&flagTags, "tag", nil, "filter instances by tag key=value (repeatable); works with --list and --run")
 	_ = rootCmd.Flags().MarkHidden("proxy")
 }

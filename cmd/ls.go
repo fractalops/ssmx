@@ -15,13 +15,11 @@ import (
 )
 
 var (
-	lsFlagTags      []string
 	lsFlagUnhealthy bool
 	lsFlagFormat    string
 )
 
 func init() {
-	rootCmd.Flags().StringArrayVar(&lsFlagTags, "tag", nil, "filter by tag (e.g. --tag env=prod); requires --list")
 	rootCmd.Flags().BoolVar(&lsFlagUnhealthy, "unhealthy", false, "show only SSM-unreachable instances; requires --list")
 	rootCmd.Flags().StringVar(&lsFlagFormat, "format", "table", "output format: table, json, tsv; requires --list")
 }
@@ -49,7 +47,7 @@ func runList(cmd *cobra.Command) error {
 	cached, err := state.GetCachedInstances(ctx, db, profile, region)
 	var instances []awsclient.Instance
 
-	if err == nil && len(cached) > 0 && len(lsFlagTags) == 0 {
+	if err == nil && len(cached) > 0 && len(flagTags) == 0 {
 		for _, c := range cached {
 			instances = append(instances, awsclient.Instance{
 				InstanceID:       c.InstanceID,
@@ -63,7 +61,7 @@ func runList(cmd *cobra.Command) error {
 			})
 		}
 	} else {
-		instances, err = awsclient.ListInstances(ctx, cfg, lsFlagTags)
+		instances, err = awsclient.ListInstances(ctx, cfg, flagTags)
 		if err != nil {
 			return fmt.Errorf("listing instances: %w", err)
 		}
