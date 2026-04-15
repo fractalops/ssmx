@@ -203,3 +203,33 @@ func TestValidate_ParallelSubStepMultipleKinds(t *testing.T) {
 		t.Error("expected error for parallel sub-step with multiple kinds")
 	}
 }
+
+func TestValidate_OnFailureOnNonWorkflowStep_Error(t *testing.T) {
+	wf := &Workflow{
+		Name: "test",
+		Steps: map[string]*Step{
+			"s": {
+				Shell:     "echo hi",
+				OnFailure: &OnFailure{Workflow: "rollback"},
+			},
+		},
+	}
+	if err := wf.Validate(); err == nil {
+		t.Error("expected error for on-failure on shell step")
+	}
+}
+
+func TestValidate_OnFailureEmptyWorkflow_Error(t *testing.T) {
+	wf := &Workflow{
+		Name: "test",
+		Steps: map[string]*Step{
+			"s": {
+				Workflow:  "sub",
+				OnFailure: &OnFailure{}, // no Workflow field
+			},
+		},
+	}
+	if err := wf.Validate(); err == nil {
+		t.Error("expected error for on-failure with empty workflow name")
+	}
+}

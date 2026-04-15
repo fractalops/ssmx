@@ -110,6 +110,15 @@ func (wf *Workflow) Validate() error {
 			return fmt.Errorf("step %q has more than one kind field set", name)
 		}
 
+		// on-failure is only meaningful on workflow: steps.
+		if step.OnFailure != nil && step.Workflow == "" {
+			return fmt.Errorf("step %q: on-failure is only valid on workflow: steps", name)
+		}
+		// on-failure must name a rollback workflow.
+		if step.OnFailure != nil && step.OnFailure.Workflow == "" {
+			return fmt.Errorf("step %q: on-failure must specify a workflow name", name)
+		}
+
 		if step.Parallel != nil {
 			for subName, subStep := range step.Parallel {
 				subKinds := 0
