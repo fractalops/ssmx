@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -86,14 +87,21 @@ func runWorkflowInfo(name string) error {
 	if err != nil {
 		return err
 	}
+	writeWorkflowInfo(os.Stdout, wf)
+	return nil
+}
 
-	fmt.Printf("workflow: %s\n", wf.Name)
+func writeWorkflowInfo(w io.Writer, wf *workflow.Workflow) {
+	fmt.Fprintf(w, "workflow: %s\n", wf.Name)
 	if wf.Description != "" {
-		fmt.Printf("description: %s\n", wf.Description)
+		fmt.Fprintf(w, "description: %s\n", wf.Description)
+	}
+	if wf.Version != "" {
+		fmt.Fprintf(w, "version: %s\n", wf.Version)
 	}
 
 	if len(wf.Inputs) > 0 {
-		fmt.Println("\ninputs:")
+		fmt.Fprintln(w, "\ninputs:")
 		inputNames := make([]string, 0, len(wf.Inputs))
 		for n := range wf.Inputs {
 			inputNames = append(inputNames, n)
@@ -109,26 +117,25 @@ func runWorkflowInfo(name string) error {
 			if input.Default != nil {
 				def = fmt.Sprintf(" [default: %v]", input.Default)
 			}
-			fmt.Printf("  %-20s  %s%s%s\n", inputName, input.Type, req, def)
+			fmt.Fprintf(w, "  %-20s  %s%s%s\n", inputName, input.Type, req, def)
 		}
 	}
 
 	if len(wf.Secrets) > 0 {
-		fmt.Println("\nsecrets:")
+		fmt.Fprintln(w, "\nsecrets:")
 		for _, s := range wf.Secrets {
-			fmt.Printf("  %-20s  → %s\n", s.Name, s.SSM)
+			fmt.Fprintf(w, "  %-20s  → %s\n", s.Name, s.SSM)
 		}
 	}
 
-	fmt.Println("\nsteps:")
+	fmt.Fprintln(w, "\nsteps:")
 	levels, err := workflow.Levels(wf.Steps)
 	if err != nil {
-		// Workflow has a DAG error (e.g. cycle) — warn and fall back to map order.
-		fmt.Fprintf(os.Stderr, "warning: step ordering invalid (%v); fix the workflow before running\n", err)
+		fmt.Fprintf(w, "warning: step ordering invalid (%v); fix the workflow before running\n", err)
 		for stepName, step := range wf.Steps {
-			fmt.Printf("  %-24s  [%s]\n", stepName, step.Kind())
+			fmt.Fprintf(w, "  %-24s  [%s]\n", stepName, step.Kind())
 		}
-		return nil
+		return
 	}
 	for _, level := range levels {
 		for _, stepName := range level {
@@ -137,8 +144,7 @@ func runWorkflowInfo(name string) error {
 			if len(step.Needs) > 0 {
 				deps = fmt.Sprintf("  (needs: %s)", strings.Join(step.Needs, ", "))
 			}
-			fmt.Printf("  %-24s  [%s]%s\n", stepName, step.Kind(), deps)
+			fmt.Fprintf(w, "  %-24s  [%s]%s\n", stepName, step.Kind(), deps)
 		}
 	}
-	return nil
 }
