@@ -25,9 +25,10 @@ type Engine struct {
 
 // RunOptions configures a workflow execution.
 type RunOptions struct {
-	Inputs map[string]string // from --param key=value flags
-	DryRun bool
-	Stderr io.Writer // status output; defaults to os.Stderr
+	Inputs    map[string]string // from --param key=value flags
+	DryRun    bool
+	Stderr    io.Writer // status output; defaults to os.Stderr
+	NoSpinner bool      // disable animated spinner (e.g. for sub-workflow runs)
 }
 
 // ANSI color codes used for step status output.
@@ -175,7 +176,7 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 	// goroutines would corrupt output. For multi-step TTY levels we still stream
 	// output, but protect all writes with a shared mutex so lines don't interleave.
 	isTTY := isTerminalWriter(w)
-	useSpinner := isTTY && len(stepNames) == 1
+	useSpinner := isTTY && len(stepNames) == 1 && !opts.NoSpinner
 
 	stepW := io.Writer(w)
 	if isTTY && len(stepNames) > 1 {
