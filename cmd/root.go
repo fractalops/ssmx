@@ -25,6 +25,15 @@ var (
 	flagHealth      bool
 )
 
+// Workflow flags
+var (
+	flagRun          string
+	flagParams       []string
+	flagWorkflows    bool
+	flagWorkflowInfo string
+	flagDryRun       bool
+)
+
 type rootAction int
 
 const (
@@ -37,6 +46,9 @@ const (
 	actionSSHProxy             // --proxy (internal)
 	actionForward              // one or more -L flags
 	actionHealth               // --health flag
+	actionRun                  // --run <workflow> with positional target
+	actionWorkflows            // --workflows: list available workflows
+	actionWorkflowInfo         // --workflow-info <name>: show workflow schema
 )
 
 type rootArgs struct {
@@ -49,7 +61,18 @@ type rootArgs struct {
 // parseRootArgs determines what action to take given root command invocation.
 // dashAt is the index into args where -- appeared (-1 if absent), as returned
 // by cobra's ArgsLenAtDash().
-func parseRootArgs(interactive, list, configure, proxy, hasForwards, health bool, args []string, dashAt int) rootArgs {
+func parseRootArgs(interactive, list, configure, proxy, hasForwards, health bool, args []string, dashAt int,
+	run string, workflows bool, params []string, workflowInfo string, dryRun bool,
+) rootArgs {
+	if workflows {
+		return rootArgs{action: actionWorkflows}
+	}
+	if workflowInfo != "" {
+		return rootArgs{action: actionWorkflowInfo, target: workflowInfo}
+	}
+	if run != "" && len(args) > 0 {
+		return rootArgs{action: actionRun, target: args[0]}
+	}
 	if proxy && len(args) >= 2 {
 		return rootArgs{action: actionSSHProxy, target: args[0], user: args[1]}
 	}
@@ -109,6 +132,7 @@ var rootCmd = &cobra.Command{
 			flagInteractive, flagList, flagConfigure,
 			flagProxy, len(flagForwards) > 0, flagHealth,
 			args, cmd.ArgsLenAtDash(),
+			flagRun, flagWorkflows, flagParams, flagWorkflowInfo, flagDryRun,
 		)
 		switch parsed.action {
 		case actionHelp:
@@ -133,6 +157,12 @@ var rootCmd = &cobra.Command{
 			return runForward(cmd, parsed.target, forwards, flagPersist)
 		case actionHealth:
 			return runHealth(cmd, parsed.target)
+		case actionRun:
+			return runWorkflow(cmd, parsed.target)
+		case actionWorkflows:
+			return runWorkflowList()
+		case actionWorkflowInfo:
+			return runWorkflowInfo(parsed.target)
 		}
 		return nil
 	},
@@ -177,5 +207,10 @@ func init() {
 	rootCmd.Flags().BoolVar(&flagPersist, "persist", false, "auto-reconnect port forwards on drop")
 	rootCmd.Flags().DurationVar(&flagTimeout, "timeout", 0, "timeout for one-shot exec (e.g. 30s, 2m); 0 means no timeout")
 	rootCmd.Flags().BoolVar(&flagHealth, "health", false, "run connectivity health checks for target")
+	rootCmd.Flags().StringVar(&flagRun, "run", "", "workflow to run")
+	rootCmd.Flags().StringArrayVar(&flagParams, "param", nil, "workflow input: key=value (repeatable)")
+	rootCmd.Flags().BoolVar(&flagWorkflows, "workflows", false, "list available workflows")
+	rootCmd.Flags().StringVar(&flagWorkflowInfo, "workflow-info", "", "show schema for a workflow")
+	rootCmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "print resolved steps without executing")
 	_ = rootCmd.Flags().MarkHidden("proxy")
 }
