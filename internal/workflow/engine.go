@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/term"
 )
 
 // Engine executes workflows against a single target instance.
@@ -24,6 +26,16 @@ type RunOptions struct {
 	Inputs map[string]string // from --param key=value flags
 	DryRun bool
 	Stderr io.Writer // status output; defaults to os.Stderr
+}
+
+// isTerminalWriter reports whether w is a file descriptor that refers to a
+// terminal. Used to decide whether to show animated spinners.
+func isTerminalWriter(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	return term.IsTerminal(int(f.Fd()))
 }
 
 // New creates an Engine targeting instanceID.
@@ -102,6 +114,12 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 		snapSteps[k] = v
 	}
 
+	// Use an animated spinner only when writing to a real terminal and the
+	// level has a single step. Multi-step levels run concurrently; mixing \r
+	// rewrites from several goroutines would corrupt the output.
+	isTTY := isTerminalWriter(w)
+	useSpinner := isTTY && len(stepNames) == 1
+
 	g, gctx := errgroup.WithContext(ctx)
 	for _, name := range stepNames {
 		name := name
@@ -112,7 +130,7 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 		// in a level to complete even if one errors, which is required for
 		// always: cleanup steps.
 		g.Go(func() error {
-			res, skip, err := e.runStep(gctx, step, name, snap, failedSteps, opts, w)
+			res, skip, err := e.runStep(gctx, step, name, snap, failedSteps, opts, w, useSpinner)
 			ch <- outcome{name: name, result: res, err: err, skipped: skip}
 			return nil
 		})
@@ -151,7 +169,9 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 }
 
 // runStep executes a single step. Returns (result, skipped, error).
-func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx ExprContext, failedSteps map[string]bool, opts RunOptions, w io.Writer) (*StepResult, bool, error) {
+// useSpinner enables the animated braille spinner + live stdout streaming;
+// it should only be true when w is a TTY and the step's level has one step.
+func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx ExprContext, failedSteps map[string]bool, opts RunOptions, w io.Writer, useSpinner bool) (*StepResult, bool, error) {
 	// Skip if any dependency failed (unless always: true).
 	if !step.Always {
 		for _, dep := range step.Needs {
@@ -180,11 +200,28 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 		return &StepResult{Success: true}, false, nil
 	}
 
-	fmt.Fprintf(w, "  ⠋  %s  running...\n", name)
+	// Set up spinner and live-output streaming when on a TTY.
+	var progress io.Writer
+	if useSpinner {
+		fmt.Fprintf(w, "  ⠋  %s  running...", name) // no trailing newline — spinner overwrites via \r
+		sp := newStepSpinner(w, name)
+		var stopOnce sync.Once
+		stopSpinner := func() {
+			stopOnce.Do(func() {
+				sp.Stop()
+				sp.ClearLine()
+			})
+		}
+		defer stopSpinner()
+		// progressWriter stops the spinner on first write and indents output.
+		progress = newProgressWriter(w, stopSpinner)
+	} else {
+		fmt.Fprintf(w, "  ⠋  %s  running...\n", name)
+	}
 
 	switch step.Kind() {
 	case "shell":
-		result, err := runShellStep(ctx, e.runner, e.instanceID, step, exprCtx)
+		result, err := runShellStep(ctx, e.runner, e.instanceID, step, exprCtx, progress)
 		if err != nil {
 			return nil, false, err
 		}

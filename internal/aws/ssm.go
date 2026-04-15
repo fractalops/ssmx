@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"time"
@@ -190,11 +191,14 @@ func SendShellCommand(ctx context.Context, cfg aws.Config, instanceID string, co
 // On SSM-level errors (TimedOut, Cancelled) it returns a non-nil error.
 // A non-zero exit code from the script itself is not an error — the caller
 // decides whether to treat it as failure.
-func WaitForShellCommand(ctx context.Context, cfg aws.Config, instanceID, commandID string) (stdout, stderr string, exitCode int, err error) {
+// If progress is non-nil, new stdout chunks are written to it incrementally
+// as they arrive during polling.
+func WaitForShellCommand(ctx context.Context, cfg aws.Config, instanceID, commandID string, progress io.Writer) (stdout, stderr string, exitCode int, err error) {
 	client := ssm.NewFromConfig(cfg)
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
+	var prevRawLen int
 	for first := true; ; first = false {
 		if !first {
 			select {
@@ -216,14 +220,20 @@ func WaitForShellCommand(ctx context.Context, cfg aws.Config, instanceID, comman
 			return "", "", -1, fmt.Errorf("GetCommandInvocation: %w", pollErr)
 		}
 
-		stdoutStr := strings.TrimSpace(aws.ToString(out.StandardOutputContent))
+		rawStdout := aws.ToString(out.StandardOutputContent)
 		stderrStr := strings.TrimSpace(aws.ToString(out.StandardErrorContent))
 		code := int(out.ResponseCode)
+
+		// Stream new stdout to caller incrementally.
+		if progress != nil && len(rawStdout) > prevRawLen {
+			_, _ = io.WriteString(progress, rawStdout[prevRawLen:])
+			prevRawLen = len(rawStdout)
+		}
 
 		switch out.Status {
 		case ssmtypes.CommandInvocationStatusSuccess,
 			ssmtypes.CommandInvocationStatusFailed:
-			return stdoutStr, stderrStr, code, nil
+			return strings.TrimSpace(rawStdout), stderrStr, code, nil
 		case ssmtypes.CommandInvocationStatusTimedOut:
 			return "", "", -1, fmt.Errorf("SSM command timed out on %s", instanceID)
 		case ssmtypes.CommandInvocationStatusCancelled:

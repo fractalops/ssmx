@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -14,7 +15,7 @@ import (
 // without live AWS calls.
 type shellRunner interface {
 	sendShellCommand(ctx context.Context, instanceID string, commands []string, env map[string]string, timeoutSecs int32) (string, error)
-	waitForShellCommand(ctx context.Context, instanceID, commandID string) (stdout, stderr string, exitCode int, err error)
+	waitForShellCommand(ctx context.Context, instanceID, commandID string, progress io.Writer) (stdout, stderr string, exitCode int, err error)
 }
 
 // awsShellRunner is the production implementation backed by the AWS SDK.
@@ -26,14 +27,15 @@ func (r *awsShellRunner) sendShellCommand(ctx context.Context, instanceID string
 	return awsclient.SendShellCommand(ctx, r.cfg, instanceID, commands, env, timeoutSecs)
 }
 
-func (r *awsShellRunner) waitForShellCommand(ctx context.Context, instanceID, commandID string) (string, string, int, error) {
-	return awsclient.WaitForShellCommand(ctx, r.cfg, instanceID, commandID)
+func (r *awsShellRunner) waitForShellCommand(ctx context.Context, instanceID, commandID string, progress io.Writer) (string, string, int, error) {
+	return awsclient.WaitForShellCommand(ctx, r.cfg, instanceID, commandID, progress)
 }
 
 // runShellStep executes a shell step on instanceID and returns the result.
 // It resolves all ${{ }} expressions in the script and env block, prepends
 // "set -euo pipefail" for safety, then dispatches via SSM RunShellScript.
-func runShellStep(ctx context.Context, runner shellRunner, instanceID string, step *Step, exprCtx ExprContext) (*StepResult, error) {
+// progress, if non-nil, receives incremental stdout chunks during polling.
+func runShellStep(ctx context.Context, runner shellRunner, instanceID string, step *Step, exprCtx ExprContext, progress io.Writer) (*StepResult, error) {
 	// Resolve the shell script body.
 	resolvedScript, err := Resolve(step.Shell, exprCtx)
 	if err != nil {
@@ -72,7 +74,7 @@ func runShellStep(ctx context.Context, runner shellRunner, instanceID string, st
 		return nil, fmt.Errorf("sending shell command: %w", err)
 	}
 
-	stdout, stderr, exitCode, err := runner.waitForShellCommand(ctx, instanceID, cmdID)
+	stdout, stderr, exitCode, err := runner.waitForShellCommand(ctx, instanceID, cmdID, progress)
 	if err != nil {
 		return nil, fmt.Errorf("waiting for shell command: %w", err)
 	}

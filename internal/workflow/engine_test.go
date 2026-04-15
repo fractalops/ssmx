@@ -3,6 +3,7 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"io"
 	"testing"
 )
 
@@ -24,7 +25,7 @@ func (m *mockShellRunner) sendShellCommand(_ context.Context, _ string, commands
 	return m.commandID, m.sendErr
 }
 
-func (m *mockShellRunner) waitForShellCommand(_ context.Context, _, _ string) (string, string, int, error) {
+func (m *mockShellRunner) waitForShellCommand(_ context.Context, _, _ string, _ io.Writer) (string, string, int, error) {
 	return m.stdout, m.stderr, m.exitCode, m.waitErr
 }
 
@@ -34,7 +35,7 @@ func TestRunShellStep_Success(t *testing.T) {
 		Shell:   "cat /srv/app/VERSION",
 		Outputs: map[string]string{"version": "${{ stdout }}"},
 	}
-	res, err := runShellStep(context.Background(), runner, "i-0abc", step, ExprContext{})
+	res, err := runShellStep(context.Background(), runner, "i-0abc", step, ExprContext{}, nil)
 	if err != nil {
 		t.Fatalf("runShellStep: %v", err)
 	}
@@ -54,7 +55,7 @@ func TestRunShellStep_ResolvesInputsInScript(t *testing.T) {
 	step := &Step{Shell: "deploy ${{ inputs.version }}"}
 	ctx := ExprContext{Inputs: map[string]string{"version": "2.0.0"}}
 
-	if _, err := runShellStep(context.Background(), runner, "i-0abc", step, ctx); err != nil {
+	if _, err := runShellStep(context.Background(), runner, "i-0abc", step, ctx, nil); err != nil {
 		t.Fatalf("runShellStep: %v", err)
 	}
 	found := false
@@ -72,7 +73,7 @@ func TestRunShellStep_NonZeroExitIsNotError(t *testing.T) {
 	runner := &mockShellRunner{commandID: "cmd-1", exitCode: 1, stderr: "not found"}
 	step := &Step{Shell: "which nonexistent"}
 
-	res, err := runShellStep(context.Background(), runner, "i-0abc", step, ExprContext{})
+	res, err := runShellStep(context.Background(), runner, "i-0abc", step, ExprContext{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -92,7 +93,7 @@ func TestRunShellStep_EnvResolution(t *testing.T) {
 	}
 	ctx := ExprContext{Inputs: map[string]string{"env": "production"}}
 
-	if _, err := runShellStep(context.Background(), runner, "i-0abc", step, ctx); err != nil {
+	if _, err := runShellStep(context.Background(), runner, "i-0abc", step, ctx, nil); err != nil {
 		t.Fatalf("runShellStep: %v", err)
 	}
 	if runner.capturedEnv["DEPLOY_ENV"] != "production" {
@@ -104,7 +105,7 @@ func TestRunShellStep_PrependsSafetyFlags(t *testing.T) {
 	runner := &mockShellRunner{commandID: "cmd-1", exitCode: 0}
 	step := &Step{Shell: "echo hi"}
 
-	if _, err := runShellStep(context.Background(), runner, "i-0abc", step, ExprContext{}); err != nil {
+	if _, err := runShellStep(context.Background(), runner, "i-0abc", step, ExprContext{}, nil); err != nil {
 		t.Fatalf("runShellStep: %v", err)
 	}
 	if len(runner.capturedCommands) == 0 || runner.capturedCommands[0] != "set -euo pipefail" {
@@ -118,7 +119,7 @@ func TestRunShellStep_OutputsExitCode(t *testing.T) {
 		Shell:   "exit 3",
 		Outputs: map[string]string{"code": "${{ exitCode }}"},
 	}
-	res, err := runShellStep(context.Background(), runner, "i-0abc", step, ExprContext{})
+	res, err := runShellStep(context.Background(), runner, "i-0abc", step, ExprContext{}, nil)
 	if err != nil {
 		t.Fatalf("runShellStep: %v", err)
 	}
@@ -136,7 +137,7 @@ func (r *countingShellRunner) sendShellCommand(_ context.Context, _ string, _ []
 	return "cmd-x", nil
 }
 
-func (r *countingShellRunner) waitForShellCommand(_ context.Context, _, _ string) (string, string, int, error) {
+func (r *countingShellRunner) waitForShellCommand(_ context.Context, _, _ string, _ io.Writer) (string, string, int, error) {
 	return r.fn()
 }
 
