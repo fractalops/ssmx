@@ -2,7 +2,11 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
+	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
@@ -142,4 +146,89 @@ func StartPortForwardingSessionToRemoteHost(ctx context.Context, cfg aws.Config,
 		return nil, fmt.Errorf("SSM StartPortForwardingSessionToRemoteHost for %s: %w", instanceID, err)
 	}
 	return out, nil
+}
+
+// SendShellCommand sends AWS-RunShellScript to instanceID and returns the
+// SSM commandID. env entries are injected as shell exports prepended to
+// commands. timeoutSecs of 0 uses SSM's default (3600s).
+func SendShellCommand(ctx context.Context, cfg aws.Config, instanceID string, commands []string, env map[string]string, timeoutSecs int32) (string, error) {
+	client := ssm.NewFromConfig(cfg)
+
+	// Build sorted export lines for deterministic ordering.
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	all := make([]string, 0, len(env)+len(commands))
+	for _, k := range keys {
+		// Single-quote the value with shell escaping for embedded single quotes.
+		escaped := strings.ReplaceAll(env[k], "'", `'\''`)
+		all = append(all, "export "+k+"='"+escaped+"'")
+	}
+	all = append(all, commands...)
+
+	input := &ssm.SendCommandInput{
+		InstanceIds:  []string{instanceID},
+		DocumentName: aws.String("AWS-RunShellScript"),
+		Parameters:   map[string][]string{"commands": all},
+	}
+	if timeoutSecs > 0 {
+		input.TimeoutSeconds = aws.Int32(timeoutSecs)
+	}
+
+	out, err := client.SendCommand(ctx, input)
+	if err != nil {
+		return "", fmt.Errorf("SSM SendCommand on %s: %w", instanceID, err)
+	}
+	return aws.ToString(out.Command.CommandId), nil
+}
+
+// WaitForShellCommand polls GetCommandInvocation until the command reaches
+// a terminal state. Returns stdout, stderr, and exit code.
+// On SSM-level errors (TimedOut, Cancelled) it returns a non-nil error.
+// A non-zero exit code from the script itself is not an error — the caller
+// decides whether to treat it as failure.
+func WaitForShellCommand(ctx context.Context, cfg aws.Config, instanceID, commandID string) (stdout, stderr string, exitCode int, err error) {
+	client := ssm.NewFromConfig(cfg)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for first := true; ; first = false {
+		if !first {
+			select {
+			case <-ctx.Done():
+				return "", "", -1, ctx.Err() //nolint:wrapcheck // context sentinel — must not be double-wrapped
+			case <-ticker.C:
+			}
+		}
+
+		out, pollErr := client.GetCommandInvocation(ctx, &ssm.GetCommandInvocationInput{
+			CommandId:  aws.String(commandID),
+			InstanceId: aws.String(instanceID),
+		})
+		if pollErr != nil {
+			var notFound *ssmtypes.InvocationDoesNotExist
+			if errors.As(pollErr, &notFound) {
+				continue // command registered but invocation record not yet visible
+			}
+			return "", "", -1, fmt.Errorf("GetCommandInvocation: %w", pollErr)
+		}
+
+		stdoutStr := strings.TrimSpace(aws.ToString(out.StandardOutputContent))
+		stderrStr := strings.TrimSpace(aws.ToString(out.StandardErrorContent))
+		code := int(out.ResponseCode)
+
+		switch out.Status {
+		case ssmtypes.CommandInvocationStatusSuccess,
+			ssmtypes.CommandInvocationStatusFailed:
+			return stdoutStr, stderrStr, code, nil
+		case ssmtypes.CommandInvocationStatusTimedOut:
+			return "", "", -1, fmt.Errorf("SSM command timed out on %s", instanceID)
+		case ssmtypes.CommandInvocationStatusCancelled:
+			return "", "", -1, fmt.Errorf("SSM command cancelled on %s", instanceID)
+		// Pending, InProgress, Delayed: keep polling.
+		}
+	}
 }
