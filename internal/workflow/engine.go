@@ -201,18 +201,20 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 	}
 
 	// Set up spinner and live-output streaming when on a TTY.
+	// stopSpinner is always callable (no-op when spinner is not active).
 	var progress io.Writer
+	stopSpinner := func() {}
 	if useSpinner {
 		fmt.Fprintf(w, "  ⠋  %s  running...", name) // no trailing newline — spinner overwrites via \r
 		sp := newStepSpinner(w, name)
 		var stopOnce sync.Once
-		stopSpinner := func() {
+		stopSpinner = func() {
 			stopOnce.Do(func() {
 				sp.Stop()
 				sp.ClearLine()
 			})
 		}
-		defer stopSpinner()
+		defer stopSpinner() // safety net: ensures stop on error/unsupported-kind paths
 		// progressWriter stops the spinner on first write and indents output.
 		progress = newProgressWriter(w, stopSpinner)
 	} else {
@@ -222,6 +224,11 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 	switch step.Kind() {
 	case "shell":
 		result, err := runShellStep(ctx, e.runner, e.instanceID, step, exprCtx, progress)
+		// Stop and clear the spinner before printing the final status line.
+		// If progressWriter already stopped it (because output arrived), this is a no-op.
+		// If the step produced no output (e.g. silent systemctl), this prevents
+		// the ✓/✗ line from being appended to the live spinner frame.
+		stopSpinner()
 		if err != nil {
 			return nil, false, err
 		}
