@@ -3,6 +3,7 @@ package preflight
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -12,6 +13,28 @@ import (
 	"github.com/fractalops/ssmx/internal/tui"
 )
 
+// formatConfigError returns a targeted, human-readable message for a ConfigError.
+func formatConfigError(cfgErr *awsclient.ConfigError) string {
+	switch cfgErr.Kind {
+	case awsclient.ConfigErrSSOExpired:
+		profile := cfgErr.Profile
+		if profile == "" {
+			profile = "YOUR_PROFILE"
+		}
+		return fmt.Sprintf("SSO session expired or missing — run:\n\n    aws sso login --profile %s\n", profile)
+	case awsclient.ConfigErrProfileNotFound:
+		profile := cfgErr.Profile
+		if profile == "" {
+			profile = cfgErr.Profile
+		}
+		return fmt.Sprintf("AWS profile %q not found — check ~/.aws/config or pass a different --profile", profile)
+	case awsclient.ConfigErrNoCredentials:
+		return "no AWS credentials found — run `aws configure` or set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY"
+	default:
+		return fmt.Sprintf("AWS configuration error: %v", cfgErr.Err)
+	}
+}
+
 // Run performs all first-run checks and interactively resolves any failures.
 // Returns an error only if a check failure cannot be resolved.
 // Success states are silent — only warnings and errors are printed.
@@ -19,7 +42,11 @@ func Run(ctx context.Context, profile, region string) error {
 	// 1. AWS credentials.
 	awsCfg, err := awsclient.NewConfig(ctx, profile, region)
 	if err != nil {
-		return fmt.Errorf("%w\n\nRun `aws configure` to set up credentials", err)
+		var cfgErr *awsclient.ConfigError
+		if errors.As(err, &cfgErr) {
+			return fmt.Errorf("%s", formatConfigError(cfgErr))
+		}
+		return err
 	}
 
 	// 2. Region — resolved from flag, ~/.aws/config, AWS_DEFAULT_REGION, or ~/.ssmx/config.yaml.
