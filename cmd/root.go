@@ -231,6 +231,6 @@ func init() {
 	rootCmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "print resolved steps without executing")
 	rootCmd.Flags().IntVar(&flagConcurrency, "concurrency", 0, "max instances to run concurrently (0 = unlimited)")
 	rootCmd.Flags().StringArrayVar(&flagTags, "tag", nil, "filter instances by tag key=value (repeatable); works with --list and --run")
-	rootCmd.Flags().StringVar(&flagFormat, "format", "table", "output format: table or json")
+	rootCmd.Flags().StringVar(&flagFormat, "format", "table", "output format: table, json, or tsv")
 	_ = rootCmd.Flags().MarkHidden("proxy")
 }

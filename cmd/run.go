@@ -182,6 +182,10 @@ func runWorkflowFleet(cmd *cobra.Command) error {
 		return nil
 	}
 
+	if flagFormat == "json" && !flagDryRun {
+		return fmt.Errorf("--format json is not yet supported for fleet runs; remove --format or use --dry-run --format json")
+	}
+
 	fe := workflow.NewFleetEngineWithConfig(awsCfg, instances, concurrency, region, profile, cfg.DocAliases)
 	return fe.Run(ctx, wf, workflow.RunOptions{
 		Inputs: params,
@@ -291,9 +295,11 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 		DryRun: flagDryRun,
 	})
 	if flagFormat == "json" && summary != nil {
-		if out, jsonErr := formatRunSummaryJSON(summary); jsonErr == nil {
-			fmt.Println(out)
+		out, jsonErr := formatRunSummaryJSON(summary)
+		if jsonErr != nil {
+			return jsonErr
 		}
+		fmt.Println(out)
 	}
 	return err
 }
