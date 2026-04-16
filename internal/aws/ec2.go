@@ -73,15 +73,6 @@ func ListInstances(ctx context.Context, cfg aws.Config, tagFilters []string) ([]
 	return instances, nil
 }
 
-func tagValue(tags []ec2types.Tag, key string) string {
-	for _, t := range tags {
-		if aws.ToString(t.Key) == key {
-			return aws.ToString(t.Value)
-		}
-	}
-	return ""
-}
-
 // ListInstancesByIDs returns EC2 instances for the given instance IDs.
 // Returns the same Instance shape as ListInstances; SSMStatus defaults to "unknown".
 // Returns nil, nil when ids is empty.
@@ -122,6 +113,15 @@ func ListInstancesByIDs(ctx context.Context, cfg aws.Config, ids []string) ([]In
 		}
 	}
 	return instances, nil
+}
+
+func tagValue(tags []ec2types.Tag, key string) string {
+	for _, t := range tags {
+		if aws.ToString(t.Key) == key {
+			return aws.ToString(t.Value)
+		}
+	}
+	return ""
 }
 
 func buildTagFilters(tagFilters []string) []ec2types.Filter {
