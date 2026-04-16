@@ -6,11 +6,15 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 )
 
 // mockShellRunner records calls and returns configured responses.
+// A mutex guards the captured* fields because parallel-step tests call
+// sendShellCommand concurrently from multiple goroutines.
 type mockShellRunner struct {
+	mu                sync.Mutex
 	commandID         string
 	stdout            string
 	stderr            string
@@ -24,14 +28,18 @@ type mockShellRunner struct {
 }
 
 func (m *mockShellRunner) sendShellCommand(_ context.Context, _ string, commands []string, env map[string]string, _ int32) (string, error) {
+	m.mu.Lock()
 	m.capturedCommands = commands
 	m.capturedEnv = env
+	m.mu.Unlock()
 	return m.commandID, m.sendErr
 }
 
 func (m *mockShellRunner) sendDocCommand(_ context.Context, _, docName string, params map[string]string, _ int32) (string, error) {
+	m.mu.Lock()
 	m.capturedDocName = docName
 	m.capturedDocParams = params
+	m.mu.Unlock()
 	return m.commandID, m.sendErr
 }
 
