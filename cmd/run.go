@@ -36,6 +36,15 @@ type dryRunStep struct {
 	Preview string   `json:"preview,omitempty"`
 }
 
+// formatRunSummaryJSON marshals a RunSummary to indented JSON.
+func formatRunSummaryJSON(s *workflow.RunSummary) (string, error) {
+	b, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 // buildDryRunPlan resolves inputs and builds a machine-readable execution plan.
 func buildDryRunPlan(wf *workflow.Workflow, rawInputs map[string]string) (*dryRunPlan, error) {
 	inputs, err := wf.ApplyInputs(rawInputs)
@@ -276,10 +285,16 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 	}
 
 	engine := workflow.New(awsCfg, inst.InstanceID, region, profile, cfg.DocAliases)
-	_, _, err = engine.Run(ctx, wf, workflow.RunOptions{
+	var summary *workflow.RunSummary
+	_, summary, err = engine.Run(ctx, wf, workflow.RunOptions{
 		Inputs: params,
 		DryRun: flagDryRun,
 	})
+	if flagFormat == "json" && summary != nil {
+		if out, jsonErr := formatRunSummaryJSON(summary); jsonErr == nil {
+			fmt.Println(out)
+		}
+	}
 	return err
 }
 

@@ -47,6 +47,28 @@ func TestWriteWorkflowInfo_AlwaysAndTimeout(t *testing.T) {
 	}
 }
 
+func TestFormatRunSummaryJSON(t *testing.T) {
+	s := &workflow.RunSummary{
+		Workflow: "deploy",
+		Instance: "i-123",
+		Success:  false,
+		Error:    "step \"run\" failed (exit code 1)",
+		Steps: []workflow.StepSummary{
+			{Name: "run", Success: false, Exit: 1, Stdout: "some output\n", Stderr: "error line\n"},
+		},
+	}
+	out, err := formatRunSummaryJSON(s)
+	if err != nil {
+		t.Fatalf("formatRunSummaryJSON error: %v", err)
+	}
+	if !strings.Contains(out, `"success": false`) {
+		t.Errorf("expected success:false in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, `"workflow": "deploy"`) {
+		t.Errorf("expected workflow name, got:\n%s", out)
+	}
+}
+
 func TestBuildDryRunPlan_Basic(t *testing.T) {
 	wf := &workflow.Workflow{
 		Name:    "deploy",
