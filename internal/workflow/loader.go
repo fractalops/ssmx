@@ -2,17 +2,32 @@ package workflow
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
+
+// stdinReader is the source used when Load is called with name "-".
+// Overridden in tests to inject fake stdin content.
+var stdinReader io.Reader = os.Stdin
 
 // Load finds and parses a workflow by name. Project-local
 // (.ssmx/workflows/<name>.yaml) takes precedence over personal
 // (~/.ssmx/workflows/<name>.yaml).
+// Pass "-" as name to read from stdin.
 func Load(name string) (*Workflow, error) {
+	if name == "-" {
+		if f, ok := stdinReader.(*os.File); ok {
+			if term.IsTerminal(int(f.Fd())) {
+				return nil, fmt.Errorf("--run -: stdin is a terminal; pipe a workflow YAML or redirect a file")
+			}
+		}
+		return loadFromReader(stdinReader, "<stdin>")
+	}
 	dirs, err := searchDirs()
 	if err != nil {
 		return nil, err
@@ -84,6 +99,23 @@ func searchDirs() ([]string, error) {
 		filepath.Join(projectRoot(cwd), ".ssmx", "workflows"),
 		filepath.Join(home, ".ssmx", "workflows"),
 	}, nil
+}
+
+// loadFromReader parses and validates a workflow from r. source is used in
+// error messages (e.g. "<stdin>").
+func loadFromReader(r io.Reader, source string) (*Workflow, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", source, err)
+	}
+	var wf Workflow
+	if err := yaml.Unmarshal(data, &wf); err != nil {
+		return nil, fmt.Errorf("parsing %s: %w", source, err)
+	}
+	if err := wf.Validate(); err != nil {
+		return nil, fmt.Errorf("validating %s: %w", source, err)
+	}
+	return &wf, nil
 }
 
 // projectRoot walks up from dir until it finds a .git directory or reaches

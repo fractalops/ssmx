@@ -1,8 +1,10 @@
 package workflow
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -110,4 +112,45 @@ func TestList_EmptyDir(t *testing.T) {
 	if len(names) != 0 {
 		t.Errorf("expected empty list, got %v", names)
 	}
+}
+
+func TestLoad_Stdin(t *testing.T) {
+	yaml := `
+name: stdin-test
+version: "1.0.0"
+steps:
+  run:
+    shell: echo hello
+`
+	old := stdinReader
+	stdinReader = bytes.NewReader([]byte(yaml))
+	defer func() { stdinReader = old }()
+
+	wf, err := Load("-")
+	if err != nil {
+		t.Fatalf("Load(\"-\") error: %v", err)
+	}
+	if wf.Name != "stdin-test" {
+		t.Errorf("Name = %q, want stdin-test", wf.Name)
+	}
+}
+
+func TestLoad_StdinInvalidYAML(t *testing.T) {
+	old := stdinReader
+	stdinReader = bytes.NewReader([]byte(": invalid: yaml: ["))
+	defer func() { stdinReader = old }()
+
+	_, err := Load("-")
+	if err == nil {
+		t.Error("expected error for invalid YAML")
+	}
+}
+
+func TestLoad_StdinEmpty(t *testing.T) {
+	old := stdinReader
+	stdinReader = strings.NewReader("")
+	defer func() { stdinReader = old }()
+
+	// Empty stdin yields a valid but empty workflow — the important thing is it does not panic.
+	_, _ = Load("-")
 }
