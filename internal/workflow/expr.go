@@ -33,6 +33,7 @@ type StepResult struct {
 	Stderr   string
 	ExitCode int
 	Success  bool
+	Skipped  bool
 	Outputs  map[string]string
 }
 

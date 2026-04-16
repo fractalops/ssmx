@@ -151,6 +151,7 @@ func (e *Engine) Run(ctx context.Context, wf *Workflow, opts RunOptions) (map[st
 		ss := StepSummary{
 			Name:    name,
 			Success: sr.Success,
+			Skipped: sr.Skipped,
 			Exit:    sr.ExitCode,
 			Stdout:  sr.Stdout,
 			Stderr:  sr.Stderr,
@@ -233,6 +234,7 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 			// A skipped step blocks its dependents just like a failed step,
 			// so that skips cascade correctly through the DAG.
 			failedSteps[o.name] = true
+			exprCtx.Steps[o.name] = &StepResult{Success: false, Skipped: true}
 			continue
 		}
 		if o.err != nil {

@@ -451,6 +451,37 @@ func TestRun_ReturnsSummary(t *testing.T) {
 	}
 }
 
+func TestRun_SummaryIncludesSkippedStep(t *testing.T) {
+	wf := &Workflow{
+		Name: "skip-test",
+		Steps: map[string]*Step{
+			"first":  {Shell: "exit 1"},
+			"second": {Shell: "echo hi", Needs: []string{"first"}},
+		},
+	}
+	runner := &mockShellRunner{exitCode: 1}
+	eng := &Engine{
+		instanceID: "i-test",
+		runner:     runner,
+		callStack:  []string{},
+		loader:     func(string) (*Workflow, error) { return nil, nil },
+	}
+	var buf bytes.Buffer
+	_, summary, _ := eng.Run(context.Background(), wf, RunOptions{Stderr: &buf})
+	if summary == nil {
+		t.Fatal("summary must not be nil")
+	}
+	var foundSkipped bool
+	for _, s := range summary.Steps {
+		if s.Name == "second" && s.Skipped {
+			foundSkipped = true
+		}
+	}
+	if !foundSkipped {
+		t.Errorf("expected 'second' step to appear as Skipped in summary, got steps: %+v", summary.Steps)
+	}
+}
+
 func TestEngine_SkipPropagatesThroughChain(t *testing.T) {
 	// a fails → b (needs a) skips → c (needs b) must also skip, NOT run.
 	// Previously the engine did not add skipped steps to failedSteps, so c
