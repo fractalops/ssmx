@@ -547,6 +547,79 @@ func TestEngine_SkipPropagatesThroughChain(t *testing.T) {
 	}
 }
 
+func TestRun_SummaryStepsInDAGOrder(t *testing.T) {
+	// Linear chain a → b → c.  DAG order must be [a, b, c] regardless of
+	// map iteration order. We run the test several times to catch any
+	// accidental ordering that happens to pass on a single run.
+	wf := &Workflow{
+		Name: "order-test",
+		Steps: map[string]*Step{
+			"a": {Shell: "echo a"},
+			"b": {Shell: "echo b", Needs: []string{"a"}},
+			"c": {Shell: "echo c", Needs: []string{"b"}},
+		},
+	}
+	runner := &mockShellRunner{exitCode: 0}
+	for i := 0; i < 10; i++ {
+		eng := &Engine{
+			instanceID: "i-test",
+			runner:     runner,
+			callStack:  []string{},
+			loader:     func(string) (*Workflow, error) { return nil, nil },
+		}
+		_, summary, err := eng.Run(context.Background(), wf, RunOptions{Stderr: io.Discard})
+		if err != nil {
+			t.Fatalf("Run error: %v", err)
+		}
+		if len(summary.Steps) != 3 {
+			t.Fatalf("want 3 step summaries, got %d", len(summary.Steps))
+		}
+		want := []string{"a", "b", "c"}
+		for j, s := range summary.Steps {
+			if s.Name != want[j] {
+				t.Errorf("iter %d: step[%d].Name = %q, want %q", i, j, s.Name, want[j])
+			}
+		}
+	}
+}
+
+func TestRun_SummaryParallelStepsAlphabetical(t *testing.T) {
+	// b and c have no deps — they share level 1 (sorted: [b, c]).
+	// a depends on both — level 2.
+	wf := &Workflow{
+		Name: "parallel-order",
+		Steps: map[string]*Step{
+			"b": {Shell: "echo b"},
+			"c": {Shell: "echo c"},
+			"a": {Shell: "echo a", Needs: []string{"b", "c"}},
+		},
+	}
+	runner := &mockShellRunner{exitCode: 0}
+	for i := 0; i < 10; i++ {
+		eng := &Engine{
+			instanceID: "i-test",
+			runner:     runner,
+			callStack:  []string{},
+			loader:     func(string) (*Workflow, error) { return nil, nil },
+		}
+		_, summary, err := eng.Run(context.Background(), wf, RunOptions{Stderr: io.Discard})
+		if err != nil {
+			t.Fatalf("Run error: %v", err)
+		}
+		if len(summary.Steps) != 3 {
+			t.Fatalf("want 3 step summaries, got %d", len(summary.Steps))
+		}
+		// First two must be b and c (alphabetical, same level), then a.
+		if summary.Steps[0].Name != "b" || summary.Steps[1].Name != "c" {
+			t.Errorf("iter %d: first two steps = [%q, %q], want [b, c]",
+				i, summary.Steps[0].Name, summary.Steps[1].Name)
+		}
+		if summary.Steps[2].Name != "a" {
+			t.Errorf("iter %d: step[2].Name = %q, want a", i, summary.Steps[2].Name)
+		}
+	}
+}
+
 func TestRun_NonTTYLabeledOutput(t *testing.T) {
 	wf := &Workflow{
 		Name: "label-test",

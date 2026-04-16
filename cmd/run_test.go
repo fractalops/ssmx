@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/fractalops/ssmx/internal/workflow"
 )
 
@@ -67,6 +69,38 @@ func TestFormatRunSummaryJSON(t *testing.T) {
 	}
 	if !strings.Contains(out, `"workflow": "deploy"`) {
 		t.Errorf("expected workflow name, got:\n%s", out)
+	}
+}
+
+func newCmdWithFormatFlag() *cobra.Command {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().StringVar(&flagFormat, "format", "table", "output format")
+	return cmd
+}
+
+func TestRejectFormatIfSet_DefaultIsNotRejected(t *testing.T) {
+	cmd := newCmdWithFormatFlag()
+	// Flag not explicitly set — Changed("format") is false.
+	if err := rejectFormatIfSet(cmd); err != nil {
+		t.Errorf("expected no error when --format not set, got: %v", err)
+	}
+}
+
+func TestRejectFormatIfSet_ExplicitValueRejected(t *testing.T) {
+	cmd := newCmdWithFormatFlag()
+	_ = cmd.Flags().Set("format", "json") // marks it as Changed
+	if err := rejectFormatIfSet(cmd); err == nil {
+		t.Error("expected error when --format explicitly set on unsupported mode")
+	}
+}
+
+func TestRejectFormatIfSet_ExplicitTableRejected(t *testing.T) {
+	// Even --format table (same as default) should be rejected when explicitly
+	// passed to an unsupported mode — the intent is unambiguous.
+	cmd := newCmdWithFormatFlag()
+	_ = cmd.Flags().Set("format", "table")
+	if err := rejectFormatIfSet(cmd); err == nil {
+		t.Error("expected error when --format table explicitly set on unsupported mode")
 	}
 }
 

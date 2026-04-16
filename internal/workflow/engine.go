@@ -148,16 +148,23 @@ func (e *Engine) Run(ctx context.Context, wf *Workflow, opts RunOptions) (map[st
 	if firstErr != nil {
 		summary.Error = firstErr.Error()
 	}
-	for name, sr := range exprCtx.Steps {
-		ss := StepSummary{
-			Name:    name,
-			Success: sr.Success,
-			Skipped: sr.Skipped,
-			Exit:    sr.ExitCode,
-			Stdout:  sr.Stdout,
-			Stderr:  sr.Stderr,
+	// Collect step summaries in DAG execution order (level by level,
+	// alphabetical within each level) so that JSON output is stable across runs.
+	for _, level := range levels {
+		for _, name := range level {
+			sr, ok := exprCtx.Steps[name]
+			if !ok {
+				continue
+			}
+			summary.Steps = append(summary.Steps, StepSummary{
+				Name:    name,
+				Success: sr.Success,
+				Skipped: sr.Skipped,
+				Exit:    sr.ExitCode,
+				Stdout:  sr.Stdout,
+				Stderr:  sr.Stderr,
+			})
 		}
-		summary.Steps = append(summary.Steps, ss)
 	}
 
 	if firstErr != nil {

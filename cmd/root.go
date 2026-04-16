@@ -138,6 +138,17 @@ func validateFormat(allowed ...string) error {
 		flagFormat, strings.Join(allowed, ", "))
 }
 
+// rejectFormatIfSet returns an error if the user explicitly passed --format.
+// Used by command modes that produce no structured output and do not interpret
+// the flag, so that ssmx web-prod --format json does not silently behave like
+// a normal interactive session.
+func rejectFormatIfSet(cmd *cobra.Command) error {
+	if cmd.Flags().Changed("format") {
+		return fmt.Errorf("--format is not supported for this command mode")
+	}
+	return nil
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "ssmx [target] [-- command...]",
 	Short: "The SSM CLI that AWS should have built",
@@ -163,18 +174,33 @@ var rootCmd = &cobra.Command{
 		case actionHelp:
 			return cmd.Help()
 		case actionPicker:
+			if err := rejectFormatIfSet(cmd); err != nil {
+				return err
+			}
 			return runConnect(cmd, []string{})
 		case actionConnect:
+			if err := rejectFormatIfSet(cmd); err != nil {
+				return err
+			}
 			return runConnect(cmd, []string{parsed.target})
 		case actionExec:
+			if err := rejectFormatIfSet(cmd); err != nil {
+				return err
+			}
 			return runExec(cmd, parsed.target, parsed.remoteCmd)
 		case actionList:
 			return runList(cmd)
 		case actionConfigure:
+			if err := rejectFormatIfSet(cmd); err != nil {
+				return err
+			}
 			return runConfigInteractive()
 		case actionSSHProxy:
 			return runProxy(parsed.target, parsed.user)
 		case actionForward:
+			if err := rejectFormatIfSet(cmd); err != nil {
+				return err
+			}
 			forwards, err := parseForwards(flagForwards)
 			if err != nil {
 				return err
@@ -189,8 +215,14 @@ var rootCmd = &cobra.Command{
 		case actionRun:
 			return runWorkflow(cmd, parsed.target)
 		case actionWorkflows:
+			if err := rejectFormatIfSet(cmd); err != nil {
+				return err
+			}
 			return runWorkflowList()
 		case actionWorkflowInfo:
+			if err := rejectFormatIfSet(cmd); err != nil {
+				return err
+			}
 			return runWorkflowInfo(parsed.target)
 		}
 		return nil
