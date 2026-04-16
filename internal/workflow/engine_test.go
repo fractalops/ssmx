@@ -385,6 +385,21 @@ func TestEngine_WorkflowStepComposition(t *testing.T) {
 	}
 }
 
+func TestEngine_DocAliasesCopiedToChild(t *testing.T) {
+	aliases := map[string]string{"patch": "AWS-PatchInstanceWithRollback"}
+	e := &Engine{
+		instanceID: "i-0abc",
+		runner:     &mockShellRunner{},
+		callStack:  []string{},
+		loader:     func(_ string) (*Workflow, error) { return nil, nil },
+		docAliases: aliases,
+	}
+	child := e.newChild("sub-wf")
+	if child.docAliases["patch"] != "AWS-PatchInstanceWithRollback" {
+		t.Errorf("child docAliases missing patch alias, got %v", child.docAliases)
+	}
+}
+
 func TestEngine_NewChild_AppendsCallStack(t *testing.T) {
 	runner := &mockShellRunner{}
 	e := &Engine{

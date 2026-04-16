@@ -40,6 +40,11 @@ func runWorkflowFleet(cmd *cobra.Command) error {
 		profile = defaultProfile
 	}
 
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
 	wf, err := workflow.Load(flagRun)
 	if err != nil {
 		return err
@@ -76,7 +81,7 @@ func runWorkflowFleet(cmd *cobra.Command) error {
 		params[parts[0]] = parts[1]
 	}
 
-	fe := workflow.NewFleetEngineWithConfig(awsCfg, instances, concurrency, region, profile)
+	fe := workflow.NewFleetEngineWithConfig(awsCfg, instances, concurrency, region, profile, cfg.DocAliases)
 	return fe.Run(ctx, wf, workflow.RunOptions{
 		Inputs: params,
 		DryRun: flagDryRun,
@@ -154,7 +159,7 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 		params[parts[0]] = parts[1]
 	}
 
-	engine := workflow.New(awsCfg, inst.InstanceID, region, profile)
+	engine := workflow.New(awsCfg, inst.InstanceID, region, profile, cfg.DocAliases)
 	_, err = engine.Run(ctx, wf, workflow.RunOptions{
 		Inputs: params,
 		DryRun: flagDryRun,

@@ -15,14 +15,14 @@ import (
 
 // NewFleetEngineWithConfig creates a FleetEngine for production use. Each
 // per-instance Engine is created from the provided AWS config, region, and profile.
-func NewFleetEngineWithConfig(cfg aws.Config, instances []awsclient.Instance, maxConcurrency int, region, profile string) *FleetEngine {
+func NewFleetEngineWithConfig(cfg aws.Config, instances []awsclient.Instance, maxConcurrency int, region, profile string, docAliases map[string]string) *FleetEngine {
 	return &FleetEngine{
 		instances:      instances,
 		maxConcurrency: maxConcurrency,
 		region:         region,
 		profile:        profile,
 		newEngine: func(instanceID string) *Engine {
-			return New(cfg, instanceID, region, profile)
+			return New(cfg, instanceID, region, profile, docAliases)
 		},
 	}
 }

@@ -21,6 +21,7 @@ type Engine struct {
 	runner     shellRunner                    // injectable for tests; set by New
 	callStack  []string                       // workflow names on current call path; detects cycles
 	loader     func(string) (*Workflow, error) // injectable; defaults to Load
+	docAliases map[string]string              // SSM doc alias → full doc name
 }
 
 // RunOptions configures a workflow execution.
@@ -61,7 +62,7 @@ func isTerminalWriter(w io.Writer) bool {
 }
 
 // New creates an Engine targeting instanceID.
-func New(cfg aws.Config, instanceID, region, profile string) *Engine {
+func New(cfg aws.Config, instanceID, region, profile string, docAliases map[string]string) *Engine {
 	return &Engine{
 		cfg:        cfg,
 		instanceID: instanceID,
@@ -70,6 +71,7 @@ func New(cfg aws.Config, instanceID, region, profile string) *Engine {
 		runner:     &awsShellRunner{cfg: cfg},
 		callStack:  []string{},
 		loader:     Load,
+		docAliases: docAliases,
 	}
 }
 
@@ -88,6 +90,7 @@ func (e *Engine) newChild(workflowName string) *Engine {
 		runner:     e.runner,
 		callStack:  stack,
 		loader:     e.loader,
+		docAliases: e.docAliases,
 	}
 }
 
