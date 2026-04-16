@@ -1,6 +1,8 @@
 # Build output
 ssmx
 ssmx-*
+!.agents/skills/ssmx-*
+!.claude/skills/ssmx-*
 ssmcp/ssmcp
 ssmcp/ssmcp-*
 *.exe
