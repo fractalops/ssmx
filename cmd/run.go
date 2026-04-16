@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +16,77 @@ import (
 	"github.com/fractalops/ssmx/internal/config"
 	"github.com/fractalops/ssmx/internal/workflow"
 )
+
+// dryRunPlan is the JSON shape for --dry-run --format json.
+type dryRunPlan struct {
+	Workflow string            `json:"workflow"`
+	Version  string            `json:"version,omitempty"`
+	Inputs   map[string]string `json:"inputs"`
+	Steps    []dryRunStep      `json:"steps"`
+}
+
+type dryRunStep struct {
+	Name    string   `json:"name"`
+	Kind    string   `json:"kind"`
+	Level   int      `json:"level"`
+	Needs   []string `json:"needs,omitempty"`
+	Always  bool     `json:"always,omitempty"`
+	If      string   `json:"if,omitempty"`
+	Timeout string   `json:"timeout,omitempty"`
+	Preview string   `json:"preview,omitempty"`
+}
+
+// buildDryRunPlan resolves inputs and builds a machine-readable execution plan.
+func buildDryRunPlan(wf *workflow.Workflow, rawInputs map[string]string) (*dryRunPlan, error) {
+	inputs, err := wf.ApplyInputs(rawInputs)
+	if err != nil {
+		return nil, err
+	}
+
+	exprCtx := workflow.ExprContext{
+		Inputs:  inputs,
+		Secrets: map[string]string{},
+		Env:     wf.Env,
+		Steps:   map[string]*workflow.StepResult{},
+	}
+	if exprCtx.Env == nil {
+		exprCtx.Env = map[string]string{}
+	}
+
+	levels, err := workflow.Levels(wf.Steps)
+	if err != nil {
+		return nil, err
+	}
+
+	var steps []dryRunStep
+	for li, level := range levels {
+		for _, name := range level {
+			step := wf.Steps[name]
+			script := step.Shell
+			if step.Workflow != "" {
+				script = step.Workflow
+			}
+			preview, _ := workflow.Resolve(script, exprCtx)
+			steps = append(steps, dryRunStep{
+				Name:    name,
+				Kind:    step.Kind(),
+				Level:   li + 1,
+				Needs:   step.Needs,
+				Always:  step.Always,
+				If:      step.If,
+				Timeout: step.Timeout,
+				Preview: preview,
+			})
+		}
+	}
+
+	return &dryRunPlan{
+		Workflow: wf.Name,
+		Version:  wf.Version,
+		Inputs:   inputs,
+		Steps:    steps,
+	}, nil
+}
 
 // runWorkflowFleet resolves a fleet of target instances and runs the workflow
 // against all of them concurrently. Fleet sources, in priority order:
@@ -86,6 +158,19 @@ func runWorkflowFleet(cmd *cobra.Command) error {
 			return fmt.Errorf("invalid --param %q (expected key=value)", p)
 		}
 		params[parts[0]] = parts[1]
+	}
+
+	if flagDryRun && flagFormat == "json" {
+		plan, err := buildDryRunPlan(wf, params)
+		if err != nil {
+			return err
+		}
+		b, err := json.MarshalIndent(plan, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(b))
+		return nil
 	}
 
 	fe := workflow.NewFleetEngineWithConfig(awsCfg, instances, concurrency, region, profile, cfg.DocAliases)
@@ -175,6 +260,19 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 			return fmt.Errorf("invalid --param %q (expected key=value)", p)
 		}
 		params[parts[0]] = parts[1]
+	}
+
+	if flagDryRun && flagFormat == "json" {
+		plan, err := buildDryRunPlan(wf, params)
+		if err != nil {
+			return err
+		}
+		b, err := json.MarshalIndent(plan, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(b))
+		return nil
 	}
 
 	engine := workflow.New(awsCfg, inst.InstanceID, region, profile, cfg.DocAliases)
