@@ -15,15 +15,6 @@ AWS SSM is powerful, but the default experience is fragmented. Starting sessions
 
 `ssmx` pulls those workflows into one CLI.
 
-Use it when you want to:
-
-- connect to EC2 instances without bastions or open ports
-- run one-shot commands with live output and real exit codes
-- port-forward through an instance to local or remote services
-- copy files over SSM with `ssmcp`
-- use `ssh`, `scp`, `rsync`, and VS Code Remote over SSM
-- automate multi-step operational workflows in YAML
-
 It is also designed to be agent-friendly: the core actions are exposed as stable, composable CLI primitives that are easy for automation agents to discover, invoke, and combine.
 
 ## What it does
@@ -240,11 +231,7 @@ The skill contents are currently duplicated in both locations for cross-agent co
 
 ## Workflow Engine
 
-The workflow engine is `ssmx`'s operator-side orchestration layer. It sits above the lower-level AWS SSM execution primitives and complements SSM documents rather than replacing them.
-
-Use SSM documents when you want AWS-managed runbooks and deeper native integration with the wider SSM automation ecosystem.
-
-Use `ssmx` workflows when you want a fast CLI-driven layer for composing shell steps, selected SSM documents, sub-workflows, and fleet targeting in one place.
+The workflow engine is `ssmx`'s lightweight, CLI-driven orchestration layer for AWS SSM. It complements SSM documents rather than replacing them, making it easy to compose shell steps, selected SSM documents, sub-workflows, and fleet targeting in one place.
 
 Use workflows when you want to:
 
@@ -254,8 +241,6 @@ Use workflows when you want to:
 - mix shell commands, SSM documents, and sub-workflows
 - capture outputs for downstream steps
 - give an automation agent a lightweight way to plan and execute multi-step ops tasks
-
-In practice, that makes `ssmx` workflows feel closer to lightweight operator orchestration for both humans and agents, while SSM documents remain the AWS-native execution primitive underneath.
 
 ### Running workflows
 
