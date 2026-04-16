@@ -89,6 +89,9 @@ func (s *Step) Kind() string {
 // Validate checks that the workflow is structurally valid: each step has
 // exactly one kind field set.
 func (wf *Workflow) Validate() error {
+	if wf.Targets != nil && len(wf.Targets.Tags) > 0 && len(wf.Targets.InstanceIDs) > 0 {
+		return fmt.Errorf("targets: tags and instance-ids are mutually exclusive")
+	}
 	for name, step := range wf.Steps {
 		kinds := 0
 		if step.Shell != "" {

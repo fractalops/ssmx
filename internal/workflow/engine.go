@@ -18,10 +18,10 @@ type Engine struct {
 	instanceID string
 	region     string
 	profile    string
-	runner     shellRunner                    // injectable for tests; set by New
-	callStack  []string                       // workflow names on current call path; detects cycles
+	runner     shellRunner                     // injectable for tests; set by New
+	callStack  []string                        // workflow names on current call path; detects cycles
 	loader     func(string) (*Workflow, error) // injectable; defaults to Load
-	docAliases map[string]string              // SSM doc alias → full doc name
+	docAliases map[string]string               // SSM doc alias → full doc name
 }
 
 // RunOptions configures a workflow execution.
@@ -190,7 +190,7 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 	for _, name := range stepNames {
 		name := name
 		step := wf.Steps[name]
-		snap := *exprCtx  // copy struct fields (Inputs, Env, Target, etc.)
+		snap := *exprCtx       // copy struct fields (Inputs, Env, Target, etc.)
 		snap.Steps = snapSteps // replace with stable snapshot
 		// Goroutines return nil; errors are sent via ch. This allows all steps
 		// in a level to complete even if one errors, which is required for
@@ -343,7 +343,11 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 		if err != nil {
 			return nil, false, err
 		}
-		fmt.Fprintf(w, "  %s  %s\n", ansi(isTTY, ansiGreen, "✓"), name)
+		if result.Success {
+			fmt.Fprintf(w, "  %s  %s\n", ansi(isTTY, ansiGreen, "✓"), name)
+		} else {
+			fmt.Fprintf(w, "  %s  %s  failed\n", ansi(isTTY, ansiRed, "✗"), name)
+		}
 		return result, false, nil
 	default:
 		return nil, false, fmt.Errorf("step %q: kind %q is not supported in this version", name, step.Kind())

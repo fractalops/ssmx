@@ -9,7 +9,7 @@ import (
 )
 
 func TestRunParallelStep_AllSucceed(t *testing.T) {
-	runner := &mockShellRunner{commandID: "cmd-1", exitCode: 0}
+	runner := &countingShellRunner{fn: func() (string, string, int, error) { return "", "", 0, nil }}
 	e := makeTestEngine(runner, func(_ string) (*Workflow, error) { return nil, nil })
 	step := &Step{
 		Parallel: map[string]*Step{
@@ -28,7 +28,7 @@ func TestRunParallelStep_AllSucceed(t *testing.T) {
 }
 
 func TestRunParallelStep_FailureReturnsError(t *testing.T) {
-	runner := &mockShellRunner{commandID: "cmd-1", exitCode: 1}
+	runner := &countingShellRunner{fn: func() (string, string, int, error) { return "", "", 1, nil }}
 	e := makeTestEngine(runner, func(_ string) (*Workflow, error) { return nil, nil })
 	step := &Step{
 		Parallel: map[string]*Step{
@@ -82,7 +82,7 @@ func TestRunParallelStep_ContinueAll_BothSubStepsRun(t *testing.T) {
 }
 
 func TestEngine_ParallelStepInWorkflow(t *testing.T) {
-	runner := &mockShellRunner{commandID: "cmd-1", exitCode: 0}
+	runner := &countingShellRunner{fn: func() (string, string, int, error) { return "", "", 0, nil }}
 	e := &Engine{
 		instanceID: "i-0abc",
 		runner:     runner,

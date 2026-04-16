@@ -4,16 +4,20 @@ import (
 	"bytes"
 	"context"
 	"strings"
+	"sync"
 	"testing"
 
 	awsclient "github.com/fractalops/ssmx/internal/aws"
 )
 
 func TestFleetEngine_RunsAllInstances(t *testing.T) {
+	var mu sync.Mutex
 	callCount := 0
 	runner := &countingShellRunner{
 		fn: func() (string, string, int, error) {
+			mu.Lock()
 			callCount++
+			mu.Unlock()
 			return "", "", 0, nil
 		},
 	}

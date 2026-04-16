@@ -71,7 +71,7 @@ func runParallelStep(ctx context.Context, e *Engine, step *Step, name string, ex
 	}
 	if failed > 0 {
 		return &StepResult{Success: false, ExitCode: 1},
-			fmt.Errorf("%d of %d sub-steps failed", failed, len(subNames))
+			fmt.Errorf("%d of %d sub-steps failed: %w", failed, len(subNames), firstErr)
 	}
 	return &StepResult{Success: true}, nil
 }

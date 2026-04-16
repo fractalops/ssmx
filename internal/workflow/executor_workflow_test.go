@@ -13,6 +13,7 @@ func makeTestEngine(runner shellRunner, loader func(string) (*Workflow, error)) 
 		runner:     runner,
 		callStack:  []string{},
 		loader:     loader,
+		docAliases: map[string]string{},
 	}
 }
 

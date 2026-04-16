@@ -302,3 +302,19 @@ func TestValidate_ParallelSubStep_AlwaysRejected(t *testing.T) {
 		t.Error("expected error for parallel sub-step with always:")
 	}
 }
+
+func TestValidate_TargetsTagsAndInstanceIDsMutuallyExclusive(t *testing.T) {
+	wf := &Workflow{
+		Name: "w",
+		Targets: &Targets{
+			Tags:        map[string]string{"env": "prod"},
+			InstanceIDs: []string{"i-0abc"},
+		},
+		Steps: map[string]*Step{
+			"s": {Shell: "echo hi"},
+		},
+	}
+	if err := wf.Validate(); err == nil {
+		t.Error("expected error for targets with both tags and instance-ids set")
+	}
+}
