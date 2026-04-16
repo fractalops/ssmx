@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -479,6 +480,35 @@ func TestRun_SummaryIncludesSkippedStep(t *testing.T) {
 	}
 	if !foundSkipped {
 		t.Errorf("expected 'second' step to appear as Skipped in summary, got steps: %+v", summary.Steps)
+	}
+}
+
+func TestRun_FailedStepOutputPrinted(t *testing.T) {
+	wf := &Workflow{
+		Name: "fail-test",
+		Steps: map[string]*Step{
+			"bad": {Shell: "exit 1"},
+		},
+	}
+	runner := &mockShellRunner{
+		stdout:   "some output line\n",
+		stderr:   "error detail\n",
+		exitCode: 1,
+	}
+	eng := &Engine{
+		instanceID: "i-test",
+		runner:     runner,
+		callStack:  []string{},
+		loader:     func(string) (*Workflow, error) { return nil, nil },
+	}
+	var buf bytes.Buffer
+	_, _, _ = eng.Run(context.Background(), wf, RunOptions{Stderr: &buf})
+	out := buf.String()
+	if !strings.Contains(out, "some output line") {
+		t.Errorf("expected stdout printed inline after failure, got:\n%s", out)
+	}
+	if !strings.Contains(out, "error detail") {
+		t.Errorf("expected stderr printed inline after failure, got:\n%s", out)
 	}
 }
 

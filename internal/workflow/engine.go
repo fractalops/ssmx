@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -261,6 +262,35 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 	return firstErr
 }
 
+const maxFailedOutputLines = 50
+
+// printStepOutput prints stdout and stderr from a failed step inline, indented
+// 6 spaces. Truncates at maxFailedOutputLines total lines and notes truncation.
+func printStepOutput(w io.Writer, stdout, stderr string) {
+	var lines []string
+	if stdout != "" {
+		for _, l := range strings.Split(strings.TrimRight(stdout, "\n"), "\n") {
+			lines = append(lines, l)
+		}
+	}
+	if stderr != "" {
+		for _, l := range strings.Split(strings.TrimRight(stderr, "\n"), "\n") {
+			lines = append(lines, l)
+		}
+	}
+	truncated := false
+	if len(lines) > maxFailedOutputLines {
+		lines = lines[:maxFailedOutputLines]
+		truncated = true
+	}
+	for _, l := range lines {
+		fmt.Fprintf(w, "      %s\n", l)
+	}
+	if truncated {
+		fmt.Fprintf(w, "      ... (output truncated at %d lines)\n", maxFailedOutputLines)
+	}
+}
+
 // runStep executes a single step. Returns (result, skipped, error).
 // isTTY reflects the original output writer (before any mutex wrapping).
 // useSpinner should only be true for single-step TTY levels.
@@ -338,6 +368,7 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 			fmt.Fprintf(w, "  %s  %s\n", ansi(isTTY, ansiGreen, "✓"), name)
 		} else {
 			fmt.Fprintf(w, "  %s  %s  exit code %d\n", ansi(isTTY, ansiRed, "✗"), name, result.ExitCode)
+			printStepOutput(w, result.Stdout, result.Stderr)
 		}
 		return result, false, nil
 	case "workflow":
@@ -362,6 +393,7 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 			fmt.Fprintf(w, "  %s  %s\n", ansi(isTTY, ansiGreen, "✓"), name)
 		} else {
 			fmt.Fprintf(w, "  %s  %s  exit code %d\n", ansi(isTTY, ansiRed, "✗"), name, result.ExitCode)
+			printStepOutput(w, result.Stdout, result.Stderr)
 		}
 		return result, false, nil
 	case "parallel":
