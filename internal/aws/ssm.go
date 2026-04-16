@@ -188,8 +188,9 @@ func SendShellCommand(ctx context.Context, cfg aws.Config, instanceID string, co
 
 // SendDocCommand sends an arbitrary SSM document command to a single instance.
 // params values are automatically wrapped in string arrays as required by the SSM API.
+// timeoutSecs of 0 uses SSM's default (3600s).
 // Returns the CommandId. Use WaitForShellCommand to poll for completion.
-func SendDocCommand(ctx context.Context, cfg aws.Config, instanceID, docName string, params map[string]string) (string, error) {
+func SendDocCommand(ctx context.Context, cfg aws.Config, instanceID, docName string, params map[string]string, timeoutSecs int32) (string, error) {
 	client := ssm.NewFromConfig(cfg)
 
 	ssmParams := make(map[string][]string, len(params))
@@ -197,11 +198,16 @@ func SendDocCommand(ctx context.Context, cfg aws.Config, instanceID, docName str
 		ssmParams[k] = []string{v}
 	}
 
-	out, err := client.SendCommand(ctx, &ssm.SendCommandInput{
+	input := &ssm.SendCommandInput{
 		InstanceIds:  []string{instanceID},
 		DocumentName: aws.String(docName),
 		Parameters:   ssmParams,
-	})
+	}
+	if timeoutSecs > 0 {
+		input.TimeoutSeconds = aws.Int32(timeoutSecs)
+	}
+
+	out, err := client.SendCommand(ctx, input)
 	if err != nil {
 		return "", fmt.Errorf("SSM SendCommand (doc %s) on %s: %w", docName, instanceID, err)
 	}

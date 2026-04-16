@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 )
 
 // runSSMDocStep executes an ssm-doc: step. It resolves param expressions against
@@ -27,7 +28,17 @@ func runSSMDocStep(ctx context.Context, e *Engine, step *Step, name string, expr
 		resolvedParams[k] = resolved
 	}
 
-	cmdID, err := e.runner.sendDocCommand(ctx, e.instanceID, docName, resolvedParams)
+	// Parse optional step-level timeout.
+	var timeoutSecs int32
+	if step.Timeout != "" {
+		d, err := time.ParseDuration(step.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("parsing timeout %q: %w", step.Timeout, err)
+		}
+		timeoutSecs = int32(d.Seconds())
+	}
+
+	cmdID, err := e.runner.sendDocCommand(ctx, e.instanceID, docName, resolvedParams, timeoutSecs)
 	if err != nil {
 		return nil, fmt.Errorf("sending doc command: %w", err)
 	}

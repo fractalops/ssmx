@@ -15,7 +15,7 @@ import (
 // without live AWS calls.
 type shellRunner interface {
 	sendShellCommand(ctx context.Context, instanceID string, commands []string, env map[string]string, timeoutSecs int32) (string, error)
-	sendDocCommand(ctx context.Context, instanceID, docName string, params map[string]string) (string, error)
+	sendDocCommand(ctx context.Context, instanceID, docName string, params map[string]string, timeoutSecs int32) (string, error)
 	waitForShellCommand(ctx context.Context, instanceID, commandID string, progress io.Writer) (stdout, stderr string, exitCode int, err error)
 }
 
@@ -28,8 +28,8 @@ func (r *awsShellRunner) sendShellCommand(ctx context.Context, instanceID string
 	return awsclient.SendShellCommand(ctx, r.cfg, instanceID, commands, env, timeoutSecs)
 }
 
-func (r *awsShellRunner) sendDocCommand(ctx context.Context, instanceID, docName string, params map[string]string) (string, error) {
-	return awsclient.SendDocCommand(ctx, r.cfg, instanceID, docName, params)
+func (r *awsShellRunner) sendDocCommand(ctx context.Context, instanceID, docName string, params map[string]string, timeoutSecs int32) (string, error) {
+	return awsclient.SendDocCommand(ctx, r.cfg, instanceID, docName, params, timeoutSecs)
 }
 
 func (r *awsShellRunner) waitForShellCommand(ctx context.Context, instanceID, commandID string, progress io.Writer) (string, string, int, error) {

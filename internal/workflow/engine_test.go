@@ -27,7 +27,7 @@ func (m *mockShellRunner) sendShellCommand(_ context.Context, _ string, commands
 	return m.commandID, m.sendErr
 }
 
-func (m *mockShellRunner) sendDocCommand(_ context.Context, _, docName string, params map[string]string) (string, error) {
+func (m *mockShellRunner) sendDocCommand(_ context.Context, _, docName string, params map[string]string, _ int32) (string, error) {
 	m.capturedDocName = docName
 	m.capturedDocParams = params
 	return m.commandID, m.sendErr
@@ -145,7 +145,7 @@ func (r *countingShellRunner) sendShellCommand(_ context.Context, _ string, _ []
 	return "cmd-x", nil
 }
 
-func (r *countingShellRunner) sendDocCommand(_ context.Context, _, _ string, _ map[string]string) (string, error) {
+func (r *countingShellRunner) sendDocCommand(_ context.Context, _, _ string, _ map[string]string, _ int32) (string, error) {
 	return "cmd-x", nil
 }
 
