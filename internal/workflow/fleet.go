@@ -84,7 +84,7 @@ func (fe *FleetEngine) Run(ctx context.Context, wf *Workflow, opts RunOptions) e
 				label = inst.InstanceID
 			}
 			pw := &prefixWriter{
-				mw:     mw,
+				w:      mw,
 				prefix: fmt.Sprintf("  [%-20s]  ", label),
 			}
 
@@ -140,9 +140,9 @@ func (mw *mutexWriter) Write(b []byte) (int, error) {
 
 // prefixWriter prepends a fixed string to every line in each Write call.
 // Lines within a single Write are batched into one call to the underlying
-// mutexWriter so the entire prefix block is written atomically.
+// writer so the entire prefix block is written atomically.
 type prefixWriter struct {
-	mw     *mutexWriter
+	w      io.Writer
 	prefix string
 }
 
@@ -156,6 +156,6 @@ func (pw *prefixWriter) Write(b []byte) (int, error) {
 		line = strings.TrimRight(line, "\r")
 		fmt.Fprintf(&out, "%s%s\n", pw.prefix, line)
 	}
-	_, err := io.WriteString(pw.mw, out.String())
+	_, err := io.WriteString(pw.w, out.String())
 	return len(b), err
 }

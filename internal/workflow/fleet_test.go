@@ -94,7 +94,7 @@ func TestPrefixWriter_PrependsPrefix(t *testing.T) {
 	var underlying bytes.Buffer
 	mw.w = &underlying
 
-	pw := &prefixWriter{mw: &mw, prefix: "[web-1]  "}
+	pw := &prefixWriter{w: &mw, prefix: "[web-1]  "}
 	_, _ = pw.Write([]byte("hello\nworld\n"))
 
 	out := underlying.String()

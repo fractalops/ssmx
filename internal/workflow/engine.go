@@ -337,6 +337,14 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 			fmt.Fprintf(w, "  %s  %s  exit code %d\n", ansi(isTTY, ansiRed, "✗"), name, result.ExitCode)
 		}
 		return result, false, nil
+	case "parallel":
+		stopSpinner()
+		result, err := runParallelStep(ctx, e, step, name, exprCtx, opts, w, isTTY)
+		if err != nil {
+			return nil, false, err
+		}
+		fmt.Fprintf(w, "  %s  %s\n", ansi(isTTY, ansiGreen, "✓"), name)
+		return result, false, nil
 	default:
 		return nil, false, fmt.Errorf("step %q: kind %q is not supported in this version", name, step.Kind())
 	}
