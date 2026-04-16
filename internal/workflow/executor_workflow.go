@@ -58,7 +58,7 @@ func runWorkflowStep(ctx context.Context, e *Engine, step *Step, name string, pa
 		Stderr:    opts.Stderr,
 		NoSpinner: opts.NoSpinner,
 	}
-	outputs, runErr := child.Run(ctx, subWf, subOpts)
+	outputs, _, runErr := child.Run(ctx, subWf, subOpts)
 	if runErr != nil {
 		// Run the rollback workflow if one is configured.
 		if step.OnFailure != nil && step.OnFailure.Workflow != "" {
@@ -80,7 +80,7 @@ func runWorkflowStep(ctx context.Context, e *Engine, step *Step, name string, pa
 					Stderr:    opts.Stderr,
 					NoSpinner: opts.NoSpinner,
 				}
-				if _, rbErr := rollbackChild.Run(ctx, rollbackWf, rollbackOpts); rbErr != nil {
+				if _, _, rbErr := rollbackChild.Run(ctx, rollbackWf, rollbackOpts); rbErr != nil {
 					fmt.Fprintf(opts.Stderr, "  on-failure: rollback %q failed: %v\n", step.OnFailure.Workflow, rbErr)
 				}
 			}

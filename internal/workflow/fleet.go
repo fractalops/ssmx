@@ -95,7 +95,7 @@ func (fe *FleetEngine) Run(ctx context.Context, wf *Workflow, opts RunOptions) e
 				Stderr:    pw,
 				NoSpinner: true,
 			}
-			_, err := eng.Run(ctx, wf, instOpts)
+			_, _, err := eng.Run(ctx, wf, instOpts)
 			results[i] = result{name: label, err: err}
 		}()
 	}

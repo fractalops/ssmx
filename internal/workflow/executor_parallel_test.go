@@ -106,7 +106,7 @@ func TestEngine_ParallelStepInWorkflow(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	if _, err := e.Run(context.Background(), wf, RunOptions{Stderr: &buf}); err != nil {
+	if _, _, err := e.Run(context.Background(), wf, RunOptions{Stderr: &buf}); err != nil {
 		t.Fatalf("Run with parallel step: %v", err)
 	}
 }

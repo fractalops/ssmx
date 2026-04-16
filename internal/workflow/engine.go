@@ -99,7 +99,7 @@ func (e *Engine) newChild(workflowName string) *Engine {
 // through all levels even on failure (to allow always: cleanup steps), then
 // returns the first step error encountered. On success, the resolved workflow
 // outputs are returned (empty map when wf.Outputs is not defined).
-func (e *Engine) Run(ctx context.Context, wf *Workflow, opts RunOptions) (map[string]string, error) {
+func (e *Engine) Run(ctx context.Context, wf *Workflow, opts RunOptions) (map[string]string, *RunSummary, error) {
 	w := opts.Stderr
 	if w == nil {
 		w = os.Stderr
@@ -107,7 +107,7 @@ func (e *Engine) Run(ctx context.Context, wf *Workflow, opts RunOptions) (map[st
 
 	inputs, err := wf.ApplyInputs(opts.Inputs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	exprCtx := ExprContext{
@@ -123,7 +123,7 @@ func (e *Engine) Run(ctx context.Context, wf *Workflow, opts RunOptions) (map[st
 
 	levels, err := Levels(wf.Steps)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	failedSteps := map[string]bool{}
@@ -138,21 +138,43 @@ func (e *Engine) Run(ctx context.Context, wf *Workflow, opts RunOptions) (map[st
 		}
 	}
 
+	summary := &RunSummary{
+		Workflow: wf.Name,
+		Instance: e.instanceID,
+		Success:  firstErr == nil,
+		Steps:    make([]StepSummary, 0),
+	}
 	if firstErr != nil {
-		return nil, firstErr
+		summary.Error = firstErr.Error()
+	}
+	for name, sr := range exprCtx.Steps {
+		ss := StepSummary{
+			Name:    name,
+			Success: sr.Success,
+			Exit:    sr.ExitCode,
+			Stdout:  sr.Stdout,
+			Stderr:  sr.Stderr,
+		}
+		summary.Steps = append(summary.Steps, ss)
+	}
+
+	if firstErr != nil {
+		return nil, summary, firstErr
 	}
 	if len(wf.Outputs) == 0 {
-		return map[string]string{}, nil
+		summary.Outputs = map[string]string{}
+		return map[string]string{}, summary, nil
 	}
 	resolved := make(map[string]string, len(wf.Outputs))
 	for k, expr := range wf.Outputs {
 		v, err := Resolve(expr, exprCtx)
 		if err != nil {
-			return nil, fmt.Errorf("workflow output %q: %w", k, err)
+			return nil, summary, fmt.Errorf("workflow output %q: %w", k, err)
 		}
 		resolved[k] = v
 	}
-	return resolved, nil
+	summary.Outputs = resolved
+	return resolved, summary, nil
 }
 
 // runLevel executes all steps in a DAG level concurrently and collects
@@ -208,6 +230,9 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 	var firstErr error
 	for o := range ch {
 		if o.skipped {
+			// A skipped step blocks its dependents just like a failed step,
+			// so that skips cascade correctly through the DAG.
+			failedSteps[o.name] = true
 			continue
 		}
 		if o.err != nil {

@@ -276,7 +276,7 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 	}
 
 	engine := workflow.New(awsCfg, inst.InstanceID, region, profile, cfg.DocAliases)
-	_, err = engine.Run(ctx, wf, workflow.RunOptions{
+	_, _, err = engine.Run(ctx, wf, workflow.RunOptions{
 		Inputs: params,
 		DryRun: flagDryRun,
 	})
