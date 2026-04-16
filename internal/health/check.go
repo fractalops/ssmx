@@ -58,3 +58,17 @@ func (s Severity) Style() lipgloss.Style {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#878787"))
 	}
 }
+
+// String returns a stable machine-readable severity label.
+func (s Severity) String() string {
+	switch s {
+	case SeverityOK:
+		return "ok"
+	case SeverityWarn:
+		return "warn"
+	case SeverityError:
+		return "error"
+	default:
+		return "skip"
+	}
+}

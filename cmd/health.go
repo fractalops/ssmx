@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -14,6 +15,46 @@ import (
 	"github.com/fractalops/ssmx/internal/health"
 	"github.com/fractalops/ssmx/internal/tui"
 )
+
+// healthJSON is the top-level JSON shape for --health --format json.
+type healthJSON struct {
+	Target  healthJSONTarget  `json:"target"`
+	Summary healthJSONSummary `json:"summary"`
+	Results []healthJSONResult `json:"results"`
+}
+
+type healthJSONTarget struct {
+	Name       string `json:"name"`
+	InstanceID string `json:"instance_id"`
+	Region     string `json:"region"`
+}
+
+type healthJSONSummary struct {
+	Status   string `json:"status"` // "ok", "warn", or "error"
+	Errors   int    `json:"errors"`
+	Warnings int    `json:"warnings"`
+}
+
+type healthJSONResult struct {
+	Section  string `json:"section"`
+	Label    string `json:"label"`
+	Severity string `json:"severity"`
+	Detail   string `json:"detail"`
+}
+
+// collectHealthResults drains ch into a slice.
+func collectHealthResults(ch <-chan health.Result) []healthJSONResult {
+	var results []healthJSONResult
+	for r := range ch {
+		results = append(results, healthJSONResult{
+			Section:  r.Section,
+			Label:    r.Label,
+			Severity: r.Severity.String(),
+			Detail:   r.Detail,
+		})
+	}
+	return results
+}
 
 // runHealth resolves target, runs all health checks, and streams results to stdout.
 func runHealth(cmd *cobra.Command, target string) error {
@@ -39,6 +80,46 @@ func runHealth(cmd *cobra.Command, target string) error {
 
 	isTTY := term.IsTerminal(int(os.Stdout.Fd())) //nolint:gosec // uintptr→int conversion is safe here: value is a small syscall return
 
+	ch := health.Run(ctx, awsCfg, inst)
+
+	if lsFlagFormat == "json" {
+		results := collectHealthResults(ch)
+		errors, warnings := 0, 0
+		for _, r := range results {
+			switch r.Severity {
+			case "error":
+				errors++
+			case "warn":
+				warnings++
+			}
+		}
+		status := "ok"
+		if errors > 0 {
+			status = "error"
+		} else if warnings > 0 {
+			status = "warn"
+		}
+		out := healthJSON{
+			Target: healthJSONTarget{
+				Name:       nameOrID(inst),
+				InstanceID: inst.InstanceID,
+				Region:     awsCfg.Region,
+			},
+			Summary: healthJSONSummary{
+				Status:   status,
+				Errors:   errors,
+				Warnings: warnings,
+			},
+			Results: results,
+		}
+		b, err := json.MarshalIndent(out, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(b))
+		return nil
+	}
+
 	header := fmt.Sprintf("ssmx health: %s (%s)  %s", nameOrID(inst), inst.InstanceID, awsCfg.Region)
 	if isTTY {
 		fmt.Printf("\n%s\n\n", tui.StyleBold.Render(header))
@@ -46,9 +127,7 @@ func runHealth(cmd *cobra.Command, target string) error {
 		fmt.Printf("\n%s\n\n", header)
 	}
 
-	ch := health.Run(ctx, awsCfg, inst)
 	printResults(ch, isTTY)
-
 	return nil
 }
 

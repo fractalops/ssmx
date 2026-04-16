@@ -39,20 +39,20 @@ var (
 type rootAction int
 
 const (
-	actionHelp      rootAction = iota
-	actionPicker               // -i flag
-	actionConnect              // positional target, no remote cmd
-	actionExec                 // positional target + -- cmd
-	actionList                 // -l / --list
-	actionConfigure            // --configure
-	actionSSHProxy             // --proxy (internal)
-	actionForward              // one or more -L flags
-	actionHealth               // --health flag
-	actionRun                  // --run <workflow> with positional target
-	actionRunMissingTarget     // --run set but no positional target given
-	actionWorkflows            // --workflows: list available workflows
-	actionWorkflowInfo         // --workflow-info <name>: show workflow schema
-	actionRunFleet             // --run with --tag flag and no positional instance
+	actionHelp             rootAction = iota
+	actionPicker                      // -i flag
+	actionConnect                     // positional target, no remote cmd
+	actionExec                        // positional target + -- cmd
+	actionList                        // -l / --list
+	actionConfigure                   // --configure
+	actionSSHProxy                    // --proxy (internal)
+	actionForward                     // one or more -L flags
+	actionHealth                      // --health flag
+	actionRun                         // --run <workflow> with positional target
+	actionRunMissingTarget            // --run set but no positional target given
+	actionWorkflows                   // --workflows: list available workflows
+	actionWorkflowInfo                // --workflow-info <name>: show workflow schema
+	actionRunFleet                    // --run with --tag flag and no positional instance
 )
 
 type rootArgs struct {
