@@ -44,7 +44,7 @@ func Run(ctx context.Context, profile, region string) error {
 	if err != nil {
 		var cfgErr *awsclient.ConfigError
 		if errors.As(err, &cfgErr) {
-			return fmt.Errorf("%s", formatConfigError(cfgErr))
+			return errors.New(formatConfigError(cfgErr))
 		}
 		return err
 	}
