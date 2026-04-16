@@ -23,6 +23,10 @@ func init() {
 }
 
 func runList(cmd *cobra.Command) error {
+	if err := validateFormat("table", "json", "tsv"); err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 
 	cfg, err := awsclient.NewConfig(ctx, flagProfile, flagRegion)

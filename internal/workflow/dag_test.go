@@ -137,3 +137,81 @@ func TestLevels_EmptySteps(t *testing.T) {
 		t.Errorf("expected empty levels, got %v", levels)
 	}
 }
+
+func TestAlwaysTrueWarnings_NoWarningsWhenNoAlwaysSteps(t *testing.T) {
+	steps := map[string]*Step{
+		"a": {Shell: "echo a"},
+		"b": {Shell: "echo b", Needs: []string{"a"}},
+		"c": {Shell: "echo c", Needs: []string{"b"}},
+	}
+	if w := AlwaysTrueWarnings(steps); len(w) != 0 {
+		t.Errorf("expected no warnings, got %v", w)
+	}
+}
+
+func TestAlwaysTrueWarnings_SafePattern(t *testing.T) {
+	// cleanup is always: true and depends on start.
+	// verify depends on both start and cleanup — this is safe.
+	steps := map[string]*Step{
+		"start":   {Shell: "echo start"},
+		"cleanup": {Shell: "echo cleanup", Always: true, Needs: []string{"start"}},
+		"verify":  {Shell: "echo verify", Needs: []string{"start", "cleanup"}},
+	}
+	if w := AlwaysTrueWarnings(steps); len(w) != 0 {
+		t.Errorf("expected no warnings for safe pattern, got %v", w)
+	}
+}
+
+func TestAlwaysTrueWarnings_RiskyPattern(t *testing.T) {
+	// debug is always: true and depends on start.
+	// next depends on debug but NOT on start — risky.
+	steps := map[string]*Step{
+		"start": {Shell: "echo start"},
+		"debug": {Shell: "echo debug", Always: true, Needs: []string{"start"}},
+		"next":  {Shell: "echo next", Needs: []string{"debug"}},
+	}
+	w := AlwaysTrueWarnings(steps)
+	if len(w) == 0 {
+		t.Error("expected warning for risky pattern, got none")
+	}
+	if !strings.Contains(w[0], `"next"`) {
+		t.Errorf("warning should mention step 'next', got: %s", w[0])
+	}
+	if !strings.Contains(w[0], `"debug"`) {
+		t.Errorf("warning should mention always-step 'debug', got: %s", w[0])
+	}
+	if !strings.Contains(w[0], `"start"`) {
+		t.Errorf("warning should mention missing predecessor 'start', got: %s", w[0])
+	}
+}
+
+func TestAlwaysTrueWarnings_AlwaysStepSkippedForSelf(t *testing.T) {
+	// An always: true step depending on another always: true step should not
+	// be flagged — both run unconditionally, so there is no hidden skip risk.
+	steps := map[string]*Step{
+		"start":   {Shell: "echo start"},
+		"cleanup": {Shell: "echo cleanup", Always: true, Needs: []string{"start"}},
+		"purge":   {Shell: "echo purge", Always: true, Needs: []string{"cleanup"}},
+	}
+	if w := AlwaysTrueWarnings(steps); len(w) != 0 {
+		t.Errorf("expected no warnings when downstream is also always: true, got %v", w)
+	}
+}
+
+func TestAlwaysTrueWarnings_PartialDepsRisky(t *testing.T) {
+	// always-step A depends on [p1, p2].
+	// downstream D depends on A and p1 but not p2 — still risky for p2.
+	steps := map[string]*Step{
+		"p1":      {Shell: "echo p1"},
+		"p2":      {Shell: "echo p2"},
+		"always-a": {Shell: "echo a", Always: true, Needs: []string{"p1", "p2"}},
+		"d":       {Shell: "echo d", Needs: []string{"always-a", "p1"}},
+	}
+	w := AlwaysTrueWarnings(steps)
+	if len(w) == 0 {
+		t.Error("expected warning when d is missing p2, got none")
+	}
+	if !strings.Contains(w[0], `"p2"`) {
+		t.Errorf("warning should mention missing predecessor p2, got: %s", w[0])
+	}
+}

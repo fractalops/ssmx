@@ -58,6 +58,10 @@ func collectHealthResults(ch <-chan health.Result) []healthJSONResult {
 
 // runHealth resolves target, runs all health checks, and streams results to stdout.
 func runHealth(cmd *cobra.Command, target string) error {
+	if err := validateFormat("table", "json"); err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 
 	awsCfg, err := awsclient.NewConfig(ctx, flagProfile, flagRegion)

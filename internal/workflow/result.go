@@ -19,3 +19,12 @@ type StepSummary struct {
 	Stdout  string `json:"stdout,omitempty"`
 	Stderr  string `json:"stderr,omitempty"`
 }
+
+// FleetRunSummary captures the aggregate outcome of a fleet workflow execution.
+type FleetRunSummary struct {
+	Workflow  string       `json:"workflow"`
+	Succeeded int          `json:"succeeded"`
+	Failed    int          `json:"failed"`
+	Total     int          `json:"total"`
+	Instances []RunSummary `json:"instances"`
+}

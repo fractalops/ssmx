@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -126,6 +127,17 @@ func parseForwards(raw []string) ([]session.ForwardSpec, error) {
 	return forwards, nil
 }
 
+// validateFormat returns an error if flagFormat is not one of the allowed values.
+func validateFormat(allowed ...string) error {
+	for _, a := range allowed {
+		if flagFormat == a {
+			return nil
+		}
+	}
+	return fmt.Errorf("--format %q is not supported here; allowed values: %s",
+		flagFormat, strings.Join(allowed, ", "))
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "ssmx [target] [-- command...]",
 	Short: "The SSM CLI that AWS should have built",
@@ -231,6 +243,6 @@ func init() {
 	rootCmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "print resolved steps without executing")
 	rootCmd.Flags().IntVar(&flagConcurrency, "concurrency", 0, "max instances to run concurrently (0 = unlimited)")
 	rootCmd.Flags().StringArrayVar(&flagTags, "tag", nil, "filter instances by tag key=value (repeatable); works with --list and --run")
-	rootCmd.Flags().StringVar(&flagFormat, "format", "table", "output format: table, json, or tsv")
+	rootCmd.Flags().StringVar(&flagFormat, "format", "table", "output format: table, json, or tsv (tsv requires --list)")
 	_ = rootCmd.Flags().MarkHidden("proxy")
 }

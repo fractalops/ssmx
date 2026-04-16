@@ -3,6 +3,7 @@ package workflow
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // Levels returns groups of step names that can execute concurrently.
@@ -80,4 +81,53 @@ func Levels(steps map[string]*Step) ([][]string, error) {
 		levels = append(levels, ready)
 	}
 	return levels, nil
+}
+
+// AlwaysTrueWarnings returns human-readable warning messages for risky
+// always: true step patterns. A warning is emitted for each step C that:
+//   - depends directly on an always: true step A
+//   - A has predecessors (A.Needs is non-empty)
+//   - C does not explicitly list all of A's predecessors in its own needs
+//   - C is not itself always: true
+//
+// This pattern is risky because A runs regardless of whether its predecessors
+// succeeded. If A succeeds after a predecessor failed, C will see A as
+// satisfied and run even though the workflow is in a bad state.
+func AlwaysTrueWarnings(steps map[string]*Step) []string {
+	var warnings []string
+	for cName, c := range steps {
+		if c.Always {
+			continue
+		}
+		cNeedsSet := make(map[string]bool, len(c.Needs))
+		for _, n := range c.Needs {
+			cNeedsSet[n] = true
+		}
+		for _, aName := range c.Needs {
+			a, ok := steps[aName]
+			if !ok || !a.Always || len(a.Needs) == 0 {
+				continue
+			}
+			var missing []string
+			for _, pred := range a.Needs {
+				if !cNeedsSet[pred] {
+					missing = append(missing, pred)
+				}
+			}
+			if len(missing) > 0 {
+				sort.Strings(missing)
+				quoted := make([]string, len(missing))
+				for i, m := range missing {
+					quoted[i] = `"` + m + `"`
+				}
+				warnings = append(warnings, fmt.Sprintf(
+					`step %q depends on %q (always: true) but not on its predecessor(s) [%s] — `+
+						`if those steps fail, %q will still run; add them to %q needs: to prevent this`,
+					cName, aName, strings.Join(quoted, ", "), cName, cName,
+				))
+			}
+		}
+	}
+	sort.Strings(warnings)
+	return warnings
 }

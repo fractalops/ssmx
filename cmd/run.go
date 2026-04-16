@@ -23,6 +23,7 @@ type dryRunPlan struct {
 	Version  string            `json:"version,omitempty"`
 	Inputs   map[string]string `json:"inputs"`
 	Steps    []dryRunStep      `json:"steps"`
+	Warnings []string          `json:"warnings,omitempty"`
 }
 
 type dryRunStep struct {
@@ -89,11 +90,13 @@ func buildDryRunPlan(wf *workflow.Workflow, rawInputs map[string]string) (*dryRu
 		}
 	}
 
+	warnings := workflow.AlwaysTrueWarnings(wf.Steps)
 	return &dryRunPlan{
 		Workflow: wf.Name,
 		Version:  wf.Version,
 		Inputs:   inputs,
 		Steps:    steps,
+		Warnings: warnings,
 	}, nil
 }
 
@@ -104,6 +107,10 @@ func buildDryRunPlan(wf *workflow.Workflow, rawInputs map[string]string) (*dryRu
 //
 // A positional instance arg always routes to runWorkflow instead (single-instance).
 func runWorkflowFleet(cmd *cobra.Command) error {
+	if err := validateFormat("table", "json"); err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 	if flagTimeout > 0 {
 		var cancel context.CancelFunc
@@ -182,15 +189,31 @@ func runWorkflowFleet(cmd *cobra.Command) error {
 		return nil
 	}
 
-	if flagFormat == "json" && !flagDryRun {
-		return fmt.Errorf("--format json is not yet supported for fleet runs; remove --format or use --dry-run --format json")
+	if flagDryRun {
+		for _, warn := range workflow.AlwaysTrueWarnings(wf.Steps) {
+			fmt.Fprintf(os.Stderr, "  warning: %s\n", warn)
+		}
+	}
+
+	runOpts := workflow.RunOptions{
+		Inputs: params,
+		DryRun: flagDryRun,
+	}
+	if flagFormat == "json" {
+		// Suppress human-readable prefixed streaming so stdout contains only JSON.
+		runOpts.Stderr = io.Discard
 	}
 
 	fe := workflow.NewFleetEngineWithConfig(awsCfg, instances, concurrency, region, profile, cfg.DocAliases)
-	return fe.Run(ctx, wf, workflow.RunOptions{
-		Inputs: params,
-		DryRun: flagDryRun,
-	})
+	fleetSummary, err := fe.Run(ctx, wf, runOpts)
+	if flagFormat == "json" && fleetSummary != nil {
+		b, jsonErr := json.MarshalIndent(fleetSummary, "", "  ")
+		if jsonErr != nil {
+			return jsonErr
+		}
+		fmt.Println(string(b))
+	}
+	return err
 }
 
 // resolveFleet returns SSM-online instances matching the given tag filters or
@@ -231,6 +254,10 @@ func resolveFleet(ctx context.Context, awsCfg aws.Config, tags []string, instanc
 }
 
 func runWorkflow(cmd *cobra.Command, target string) error {
+	if err := validateFormat("table", "json"); err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 	if flagTimeout > 0 {
 		var cancel context.CancelFunc
@@ -286,6 +313,12 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 		}
 		fmt.Println(string(b))
 		return nil
+	}
+
+	if flagDryRun {
+		for _, warn := range workflow.AlwaysTrueWarnings(wf.Steps) {
+			fmt.Fprintf(os.Stderr, "  warning: %s\n", warn)
+		}
 	}
 
 	engine := workflow.New(awsCfg, inst.InstanceID, region, profile, cfg.DocAliases)
@@ -429,6 +462,13 @@ func writeWorkflowInfo(w io.Writer, wf *workflow.Workflow) {
 					fmt.Fprintf(w, "%s  outputs.%-16s  %s\n", indent, k, step.Outputs[k])
 				}
 			}
+		}
+	}
+
+	if warnings := workflow.AlwaysTrueWarnings(wf.Steps); len(warnings) > 0 {
+		fmt.Fprintln(w, "\nwarnings:")
+		for _, warn := range warnings {
+			fmt.Fprintf(w, "  ! %s\n", warn)
 		}
 	}
 }

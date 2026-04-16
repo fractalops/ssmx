@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -66,6 +67,74 @@ func TestFormatRunSummaryJSON(t *testing.T) {
 	}
 	if !strings.Contains(out, `"workflow": "deploy"`) {
 		t.Errorf("expected workflow name, got:\n%s", out)
+	}
+}
+
+func TestValidateFormat_AllowedPasses(t *testing.T) {
+	flagFormat = "json"
+	if err := validateFormat("table", "json"); err != nil {
+		t.Errorf("expected no error for 'json', got: %v", err)
+	}
+	flagFormat = "table"
+	if err := validateFormat("table", "json"); err != nil {
+		t.Errorf("expected no error for 'table', got: %v", err)
+	}
+}
+
+func TestValidateFormat_UnknownFails(t *testing.T) {
+	flagFormat = "tsv"
+	if err := validateFormat("table", "json"); err == nil {
+		t.Error("expected error for 'tsv' when not allowed")
+	}
+}
+
+func TestValidateFormat_TSVAllowedForList(t *testing.T) {
+	flagFormat = "tsv"
+	if err := validateFormat("table", "json", "tsv"); err != nil {
+		t.Errorf("expected no error for tsv when explicitly allowed, got: %v", err)
+	}
+}
+
+func TestBuildDryRunPlan_IncludesAlwaysTrueWarnings(t *testing.T) {
+	wf := &workflow.Workflow{
+		Name: "risky",
+		Steps: map[string]*workflow.Step{
+			"start":  {Shell: "echo start"},
+			"debug":  {Shell: "echo debug", Always: true, Needs: []string{"start"}},
+			"deploy": {Shell: "echo deploy", Needs: []string{"debug"}},
+		},
+	}
+	plan, err := buildDryRunPlan(wf, nil)
+	if err != nil {
+		t.Fatalf("buildDryRunPlan: %v", err)
+	}
+	if len(plan.Warnings) == 0 {
+		t.Error("expected warnings for risky always: true pattern, got none")
+	}
+	// Verify warnings are included in JSON marshaling.
+	b, _ := json.Marshal(plan)
+	if !strings.Contains(string(b), "warnings") {
+		t.Errorf("expected 'warnings' key in JSON, got: %s", string(b))
+	}
+}
+
+func TestWriteWorkflowInfo_ShowsAlwaysTrueWarning(t *testing.T) {
+	wf := &workflow.Workflow{
+		Name: "risky",
+		Steps: map[string]*workflow.Step{
+			"start":  {Shell: "echo start"},
+			"debug":  {Shell: "echo debug", Always: true, Needs: []string{"start"}},
+			"deploy": {Shell: "echo deploy", Needs: []string{"debug"}},
+		},
+	}
+	var buf bytes.Buffer
+	writeWorkflowInfo(&buf, wf)
+	out := buf.String()
+	if !strings.Contains(out, "warnings:") {
+		t.Errorf("expected 'warnings:' section in workflow info, got:\n%s", out)
+	}
+	if !strings.Contains(out, `"deploy"`) {
+		t.Errorf("expected 'deploy' mentioned in warning, got:\n%s", out)
 	}
 }
 

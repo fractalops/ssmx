@@ -43,8 +43,9 @@ type FleetEngine struct {
 // Run executes wf against every instance in the fleet concurrently.
 // Spinners are always disabled (NoSpinner=true) to prevent \r corruption.
 // Output is prefixed with the instance name. A summary line is printed after
-// all instances complete.
-func (fe *FleetEngine) Run(ctx context.Context, wf *Workflow, opts RunOptions) error {
+// all instances complete. Per-instance RunSummary values are always collected
+// and returned in the FleetRunSummary regardless of opts.Stderr.
+func (fe *FleetEngine) Run(ctx context.Context, wf *Workflow, opts RunOptions) (*FleetRunSummary, error) {
 	w := opts.Stderr
 	if w == nil {
 		w = os.Stderr
@@ -56,8 +57,9 @@ func (fe *FleetEngine) Run(ctx context.Context, wf *Workflow, opts RunOptions) e
 	mw := &mutexWriter{w: w}
 
 	type result struct {
-		name string
-		err  error
+		name    string
+		err     error
+		summary *RunSummary
 	}
 	results := make([]result, len(fe.instances))
 
@@ -95,8 +97,8 @@ func (fe *FleetEngine) Run(ctx context.Context, wf *Workflow, opts RunOptions) e
 				Stderr:    pw,
 				NoSpinner: true,
 			}
-			_, _, err := eng.Run(ctx, wf, instOpts)
-			results[i] = result{name: label, err: err}
+			_, summary, err := eng.Run(ctx, wf, instOpts)
+			results[i] = result{name: label, err: err, summary: summary}
 		}()
 	}
 	wg.Wait()
@@ -113,15 +115,39 @@ func (fe *FleetEngine) Run(ctx context.Context, wf *Workflow, opts RunOptions) e
 	total := len(fe.instances)
 	succeeded := total - failed
 
+	fleet := &FleetRunSummary{
+		Workflow:  wf.Name,
+		Succeeded: succeeded,
+		Failed:    failed,
+		Total:     total,
+		Instances: make([]RunSummary, 0, total),
+	}
+	for _, r := range results {
+		if r.summary != nil {
+			fleet.Instances = append(fleet.Instances, *r.summary)
+		} else {
+			s := RunSummary{
+				Workflow: wf.Name,
+				Instance: r.name,
+				Success:  false,
+				Steps:    make([]StepSummary, 0),
+			}
+			if r.err != nil {
+				s.Error = r.err.Error()
+			}
+			fleet.Instances = append(fleet.Instances, s)
+		}
+	}
+
 	if failed == 0 {
 		fmt.Fprintf(mw, "%s\n", ansi(isTTY, ansiGreen,
 			fmt.Sprintf("  %d / %d succeeded", succeeded, total)))
-		return nil
+		return fleet, nil
 	}
 	msg := fmt.Sprintf("  %d / %d succeeded  (%d failed: %s)",
 		succeeded, total, failed, strings.Join(failNames, ", "))
 	fmt.Fprintf(mw, "%s\n", ansi(isTTY, ansiRed, msg))
-	return fmt.Errorf("%d of %d instances failed", failed, total)
+	return fleet, fmt.Errorf("%d of %d instances failed", failed, total)
 }
 
 // mutexWriter serialises concurrent writes so lines from different goroutines
