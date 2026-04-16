@@ -60,12 +60,27 @@ func Resolve(s string, ctx ExprContext) (string, error) {
 }
 
 // EvalBool resolves all ${{ }} in s then evaluates the result as a boolean.
-// Supported forms after resolution:
-//   - "true" or "1" → true
-//   - anything else → false
-//   - "lhs != rhs" → lhs != rhs (string comparison)
-//   - "lhs == rhs" → lhs == rhs (string comparison)
+// Supported forms:
+//
+//	${{ inputs.flag }}                   truthy when resolved value is "true" or "1"
+//	!${{ inputs.flag }}                  unary negation — inverts the inner result
+//	${{ inputs.env }} == prod            true when both sides are equal (string)
+//	${{ inputs.env }} != prod            true when both sides differ (string)
+//
+// Compound expressions (&&, ||, parentheses) are not supported.
 func EvalBool(s string, ctx ExprContext) (bool, error) {
+	trimmed := strings.TrimSpace(s)
+	// Prefix ! negation: "!${{ inputs.skip }}", "!${{ steps.x.success }}", etc.
+	// The second-char check distinguishes "!" from "!=" which never leads an expression.
+	if len(trimmed) > 1 && trimmed[0] == '!' && trimmed[1] != '=' {
+		inner := strings.TrimSpace(trimmed[1:])
+		result, err := EvalBool(inner, ctx)
+		if err != nil {
+			return false, err
+		}
+		return !result, nil
+	}
+
 	resolved, err := Resolve(s, ctx)
 	if err != nil {
 		return false, err

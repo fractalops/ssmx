@@ -1,0 +1,57 @@
+name: setup-docker-traefik
+description: "Install Docker and start Traefik on an Amazon Linux 2 instance for blue-green deploys"
+version: "1.0.0"
+steps:
+  install-docker:
+    shell: |
+      if command -v docker >/dev/null 2>&1; then
+        echo "Docker already installed: $(docker --version)"
+        exit 0
+      fi
+      sudo yum update -y
+      sudo yum install -y docker
+      sudo systemctl start docker
+      sudo systemctl enable docker
+      sudo usermod -aG docker ssm-user || true
+      echo "Installed: $(docker --version)"
+
+  create-network:
+    shell: |
+      if docker network ls --format '{{.Name}}' | grep -qx 'traefik'; then
+        echo "traefik network already exists"
+      else
+        docker network create traefik
+        echo "Created traefik network"
+      fi
+    needs: [install-docker]
+
+  start-traefik:
+    shell: |
+      if docker ps --format '{{.Names}}' | grep -qx 'traefik'; then
+        echo "Traefik already running"
+        exit 0
+      fi
+      # Remove stopped traefik container if it exists
+      docker rm traefik 2>/dev/null || true
+      docker run -d \
+        --name traefik \
+        --restart unless-stopped \
+        --network traefik \
+        -p 80:80 \
+        -p 8080:8080 \
+        -v /var/run/docker.sock:/var/run/docker.sock:ro \
+        traefik:v3.0 \
+          --providers.docker=true \
+          --providers.docker.exposedByDefault=false \
+          --entrypoints.web.address=:80 \
+          --api.dashboard=true \
+          --api.insecure=true
+      echo "Traefik started"
+    needs: [create-network]
+
+  verify:
+    shell: |
+      sleep 3
+      docker ps --filter "name=traefik" --format "  traefik: {{.Status}}"
+      docker network inspect traefik --format "  network: {{.Name}} ({{len .Containers}} containers attached)"
+    needs: [start-traefik]

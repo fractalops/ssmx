@@ -1,0 +1,199 @@
+name: blue-green-deploy
+description: "Blue-green deployment for a Dockerized app via Traefik on a single instance"
+version: "1.0.0"
+
+# Prerequisites on the target instance:
+#   - Docker installed and running
+#   - Traefik container running on the shared Docker network (default: traefik)
+#     with the Docker provider enabled and exposedByDefault: false
+#   - The shared network must exist: sudo docker network create traefik
+#
+# First deploy: starts the "blue" slot. Subsequent deploys alternate blue ↔ green.
+# Traefik discovers both containers simultaneously during cutover via Docker labels,
+# momentarily load-balancing between them. Once the old slot is removed Traefik
+# routes 100% of traffic to the new slot.
+#
+# Usage:
+#   ssmx web-prod --run blue-green-deploy \
+#     --param image=myapp:v2 \
+#     --param app=myapp \
+#     --param port=8080 \
+#     --param host=myapp.example.com
+
+inputs:
+  image:
+    type: string
+    required: true
+    description: "Docker image to deploy (e.g. myapp:v2)"
+  app:
+    type: string
+    required: true
+    description: "App name — used for container names and Traefik labels"
+  port:
+    type: string
+    required: true
+    description: "Port the container listens on"
+  host:
+    type: string
+    required: true
+    description: "Hostname for the Traefik routing rule (e.g. myapp.example.com)"
+  network:
+    type: string
+    required: false
+    description: "Docker network shared with Traefik (default: traefik)"
+  health_path:
+    type: string
+    required: false
+    description: "HTTP path for health check (default: /)"
+
+steps:
+  # Inspect currently running slot (blue or green). Output is the NEXT slot to deploy.
+  # On first deploy there is no running slot so we default to "blue".
+  # Uses two --filter flags instead of {{index .Labels}} in --format, which
+  # is not supported on all Docker versions (e.g. Amazon Linux 2).
+  determine-slot:
+    shell: |
+      BLUE=$(sudo docker ps -q \
+        --filter "label=ssmx.app=${{ inputs.app }}" \
+        --filter "label=ssmx.slot=blue" 2>/dev/null || true)
+      if [ -n "$BLUE" ]; then
+        echo "green"
+      else
+        echo "blue"
+      fi
+    outputs:
+      next: "${{ stdout }}"
+
+  pull-image:
+    shell: sudo docker pull ${{ inputs.image }}
+    needs: [determine-slot]
+
+  # Start the new slot. Both slots share the same Traefik router rule so traffic
+  # is briefly load-balanced between old and new during the health-check window.
+  # Any leftover container with the same name (e.g. from a previous failed deploy)
+  # is removed first so docker run cannot fail with exit code 125.
+  start-next:
+    shell: |
+      echo "A" > /tmp/ssmx-dbg.txt
+      NEXT=$(echo "${{ steps.determine-slot.outputs.next }}" | tr -d '[:space:]')
+      echo "B NEXT=${NEXT}" >> /tmp/ssmx-dbg.txt
+      NETWORK="${{ inputs.network }}"
+      NETWORK=${NETWORK:-traefik}
+      echo "C NETWORK=${NETWORK}" >> /tmp/ssmx-dbg.txt
+      HOST_RULE=$(printf 'Host(`%s`)' "${{ inputs.host }}")
+      echo "D HOST_RULE=${HOST_RULE}" >> /tmp/ssmx-dbg.txt
+      # Evict any leftover container with the target slot name before launching.
+      sudo docker rm -f "${{ inputs.app }}-${NEXT}" 2>/dev/null || true
+      sudo docker run -d \
+        --name "${{ inputs.app }}-${NEXT}" \
+        --restart unless-stopped \
+        --network "${NETWORK}" \
+        --label "ssmx.app=${{ inputs.app }}" \
+        --label "ssmx.slot=${NEXT}" \
+        --label "traefik.enable=true" \
+        --label "traefik.http.routers.${{ inputs.app }}.rule=${HOST_RULE}" \
+        --label "traefik.http.services.${{ inputs.app }}.loadbalancer.server.port=${{ inputs.port }}" \
+        ${{ inputs.image }} > /tmp/docker-run.out 2>&1
+      echo "E docker_exit=$?" >> /tmp/ssmx-dbg.txt
+    needs: [pull-image]
+    outputs:
+      debug: "${{ stdout }}"
+
+  # Poll the container directly (not via Traefik) so we can verify it is healthy
+  # before exposing it to production traffic. Uses the container's IP on the
+  # Docker network — no port mapping required.
+  show-start-debug:
+    shell: |
+      echo "=== ssmx-dbg ===" && cat /tmp/ssmx-dbg.txt 2>/dev/null || echo "(no dbg)"
+      echo "=== docker-run.out ===" && cat /tmp/docker-run.out 2>/dev/null || echo "(no docker out)"
+    needs: [start-next]
+    always: true
+
+  wait-healthy:
+    shell: |
+      NEXT=$(echo "${{ steps.determine-slot.outputs.next }}" | tr -d '[:space:]')
+      HEALTH="${{ inputs.health_path }}"
+      HEALTH=${HEALTH:-/}
+      CONTAINER_IP=$(sudo docker inspect \
+        -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
+        "${{ inputs.app }}-${NEXT}" 2>/dev/null)
+      if [ -z "$CONTAINER_IP" ]; then
+        echo "Could not determine container IP — is the container running?"
+        exit 1
+      fi
+      echo "Health-checking ${{ inputs.app }}-${NEXT} at ${CONTAINER_IP}:${{ inputs.port }}${HEALTH}"
+      for i in $(seq 1 30); do
+        if curl -sf "http://${CONTAINER_IP}:${{ inputs.port }}${HEALTH}" >/dev/null 2>&1; then
+          echo "Healthy after ${i} attempt(s)"
+          exit 0
+        fi
+        echo "  attempt ${i}/30 — not ready yet, waiting 2s..."
+        sleep 2
+      done
+      echo "Timed out after 60s — health check never passed"
+      exit 1
+    needs: [start-next, show-start-debug]
+    timeout: 2m
+
+  # Remove the old slot. Traefik detects the container removal immediately and
+  # routes 100% of traffic to the new slot.
+  cutover:
+    shell: |
+      NEXT=$(echo "${{ steps.determine-slot.outputs.next }}" | tr -d '[:space:]')
+      if [ "$NEXT" = "green" ]; then OLD=blue; else OLD=green; fi
+      OLD_CID=$(sudo docker ps -q \
+        --filter "label=ssmx.app=${{ inputs.app }}" \
+        --filter "label=ssmx.slot=${OLD}" 2>/dev/null)
+      if [ -n "$OLD_CID" ]; then
+        sudo docker stop "${{ inputs.app }}-${OLD}"
+        sudo docker rm   "${{ inputs.app }}-${OLD}"
+        echo "Removed old ${OLD} slot"
+      else
+        echo "No old ${OLD} slot found — this was the first deploy"
+      fi
+    needs: [wait-healthy]
+
+  # Confirm the new slot is live and report its status.
+  verify:
+    shell: |
+      NEXT=$(echo "${{ steps.determine-slot.outputs.next }}" | tr -d '[:space:]')
+      sudo docker ps \
+        --filter "label=ssmx.app=${{ inputs.app }}" \
+        --filter "label=ssmx.slot=${NEXT}" \
+        --format "  slot=${NEXT}  container={{.Names}}  status={{.Status}}  image={{.Image}}"
+    needs: [cutover]
+    outputs:
+      status: "${{ stdout }}"
+
+  # Always runs — rolls back the new slot if the deploy did not complete.
+  # On the success path cutover.success is "true" so this exits immediately.
+  # On the failure path (wait-healthy timed out, cutover errored, etc.) it
+  # removes the partially-started new slot so the instance is left clean.
+  cleanup:
+    shell: |
+      NEXT=$(echo "${{ steps.determine-slot.outputs.next }}" | tr -d '[:space:]')
+      if [ -z "$NEXT" ]; then
+        echo "determine-slot did not produce a slot — nothing to clean up"
+        exit 0
+      fi
+      if [ "$NEXT" = "green" ]; then OLD=blue; else OLD=green; fi
+      # If the old slot is gone the deploy fully completed — new slot is live.
+      OLD_CID=$(sudo docker ps -q \
+        --filter "label=ssmx.app=${{ inputs.app }}" \
+        --filter "label=ssmx.slot=${OLD}" 2>/dev/null || true)
+      if [ -z "$OLD_CID" ]; then
+        echo "Deploy succeeded — ${{ inputs.app }}-${NEXT} is live"
+        exit 0
+      fi
+      # Old slot still running — deploy didn't complete; remove the new slot.
+      NEW_CID=$(sudo docker ps -aq \
+        --filter "label=ssmx.app=${{ inputs.app }}" \
+        --filter "label=ssmx.slot=${NEXT}" 2>/dev/null || true)
+      if [ -n "$NEW_CID" ]; then
+        sudo docker rm -f "$NEW_CID"
+        echo "Rolled back: removed ${{ inputs.app }}-${NEXT}"
+      else
+        echo "No new container to remove — nothing to roll back"
+      fi
+    needs: [cutover]
+    always: true

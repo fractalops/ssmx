@@ -1,0 +1,86 @@
+name: deploy-nginx
+description: Deploy nginx with a custom config, verify it is healthy, collect diagnostics, then tear down
+
+inputs:
+  port:
+    type: string
+    default: "8080"
+
+steps:
+  pull:
+    shell: |
+      docker pull nginx:alpine 2>&1
+      docker images nginx:alpine --format "{{.Repository}}:{{.Tag}}  ({{.Size}})"
+    outputs:
+      image_info: "${{ stdout }}"
+
+  write-config:
+    shell: |
+      mkdir -p /tmp/ssmx-nginx
+      cat > /tmp/ssmx-nginx/default.conf << 'CONF'
+      server {
+          listen 80;
+          server_name _;
+
+          location / {
+              return 200 'deployed by ssmx\n';
+              add_header Content-Type text/plain;
+              add_header X-Deployed-By ssmx;
+          }
+
+          location /health {
+              return 200 'ok\n';
+              add_header Content-Type text/plain;
+          }
+      }
+      CONF
+      cat /tmp/ssmx-nginx/default.conf
+    outputs:
+      config: "${{ stdout }}"
+
+  run:
+    needs: [pull, write-config]
+    shell: |
+      docker run -d \
+        --name ssmx-nginx \
+        -p ${{ inputs.port }}:80 \
+        -v /tmp/ssmx-nginx/default.conf:/etc/nginx/conf.d/default.conf:ro \
+        nginx:alpine
+    outputs:
+      container_id: "${{ stdout }}"
+
+  verify-config:
+    needs: [run]
+    shell: docker exec ssmx-nginx nginx -t 2>&1
+    outputs:
+      result: "${{ stdout }}"
+
+  healthcheck:
+    needs: [verify-config]
+    shell: |
+      sleep 2
+      curl -sf http://localhost:${{ inputs.port }}/health
+    outputs:
+      body: "${{ stdout }}"
+
+  show-response:
+    needs: [healthcheck]
+    if: "${{ steps.healthcheck.exitCode }} == 0"
+    shell: |
+      echo "=== GET / ==="
+      curl -si http://localhost:${{ inputs.port }}/
+      echo "=== GET /health ==="
+      curl -si http://localhost:${{ inputs.port }}/health
+
+  logs:
+    needs: [healthcheck]
+    shell: docker logs ssmx-nginx 2>&1
+
+  teardown:
+    needs: [show-response, logs]
+    always: true
+    shell: |
+      docker stop ssmx-nginx
+      docker rm ssmx-nginx
+      rm -rf /tmp/ssmx-nginx
+      echo "cleaned up"

@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -242,5 +243,135 @@ func TestBuildDryRunPlan_Basic(t *testing.T) {
 	}
 	if prepareLvl != 1 {
 		t.Errorf("prepare level = %d, want 1", prepareLvl)
+	}
+}
+
+// ── --run / --run-file mutual exclusion ──────────────────────────────────────
+
+func TestCheckMutuallyExclusive_BothRunFlags(t *testing.T) {
+	old1, old2 := flagRun, flagRunFile
+	defer func() { flagRun, flagRunFile = old1, old2 }()
+	flagRun = "deploy"
+	flagRunFile = "/tmp/deploy.yaml"
+	if err := checkMutuallyExclusive(); err == nil {
+		t.Error("expected error when both --run and --run-file are set")
+	}
+}
+
+func TestCheckMutuallyExclusive_OnlyRunIsOK(t *testing.T) {
+	old1, old2 := flagRun, flagRunFile
+	defer func() { flagRun, flagRunFile = old1, old2 }()
+	flagRun = "deploy"
+	flagRunFile = ""
+	if err := checkMutuallyExclusive(); err != nil {
+		t.Errorf("unexpected error with only --run: %v", err)
+	}
+}
+
+func TestCheckMutuallyExclusive_OnlyRunFileIsOK(t *testing.T) {
+	old1, old2 := flagRun, flagRunFile
+	defer func() { flagRun, flagRunFile = old1, old2 }()
+	flagRun = ""
+	flagRunFile = "/tmp/deploy.yaml"
+	if err := checkMutuallyExclusive(); err != nil {
+		t.Errorf("unexpected error with only --run-file: %v", err)
+	}
+}
+
+func TestCheckMutuallyExclusive_BothWorkflowInfoFlags(t *testing.T) {
+	old1, old2 := flagWorkflowInfo, flagWorkflowInfoFile
+	defer func() { flagWorkflowInfo, flagWorkflowInfoFile = old1, old2 }()
+	flagWorkflowInfo = "deploy"
+	flagWorkflowInfoFile = "/tmp/deploy.yaml"
+	if err := checkMutuallyExclusive(); err == nil {
+		t.Error("expected error when both --workflow-info and --workflow-info-file are set")
+	}
+}
+
+// ── parseRootArgs routing for --run-file ─────────────────────────────────────
+
+func callParseRootArgs(run, runFile string, args []string, tags []string) rootArgs {
+	return parseRootArgs(
+		false, false, false, false, false, false,
+		args, -1,
+		run, runFile,
+		false, nil, "", "", false,
+		tags, 0,
+	)
+}
+
+func TestParseRootArgs_RunFileWithTarget(t *testing.T) {
+	ra := callParseRootArgs("", "/tmp/deploy.yaml", []string{"web-prod"}, nil)
+	if ra.action != actionRun {
+		t.Errorf("action = %v, want actionRun", ra.action)
+	}
+	if ra.target != "web-prod" {
+		t.Errorf("target = %q, want web-prod", ra.target)
+	}
+}
+
+func TestParseRootArgs_RunFileFleetWithTag(t *testing.T) {
+	ra := callParseRootArgs("", "/tmp/deploy.yaml", nil, []string{"env=prod"})
+	if ra.action != actionRunFleet {
+		t.Errorf("action = %v, want actionRunFleet", ra.action)
+	}
+}
+
+func TestParseRootArgs_RunFileMissingTarget(t *testing.T) {
+	ra := callParseRootArgs("", "/tmp/deploy.yaml", nil, nil)
+	if ra.action != actionRunMissingTarget {
+		t.Errorf("action = %v, want actionRunMissingTarget", ra.action)
+	}
+}
+
+func TestParseRootArgs_WorkflowInfoFile(t *testing.T) {
+	ra := parseRootArgs(
+		false, false, false, false, false, false,
+		nil, -1,
+		"", "",
+		false, nil, "", "/tmp/deploy.yaml", false,
+		nil, 0,
+	)
+	if ra.action != actionWorkflowInfoFile {
+		t.Errorf("action = %v, want actionWorkflowInfoFile", ra.action)
+	}
+	if ra.target != "/tmp/deploy.yaml" {
+		t.Errorf("target = %q, want /tmp/deploy.yaml", ra.target)
+	}
+}
+
+// ── loadActiveWorkflow ───────────────────────────────────────────────────────
+
+func TestLoadActiveWorkflow_UsesRunFile(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString("name: file-deploy\nsteps:\n  s:\n    shell: echo hi\n")
+	f.Close()
+
+	old1, old2 := flagRun, flagRunFile
+	defer func() { flagRun, flagRunFile = old1, old2 }()
+	flagRun = ""
+	flagRunFile = f.Name()
+
+	wf, err := loadActiveWorkflow()
+	if err != nil {
+		t.Fatalf("loadActiveWorkflow: %v", err)
+	}
+	if wf.Name != "file-deploy" {
+		t.Errorf("Name = %q, want file-deploy", wf.Name)
+	}
+}
+
+func TestLoadActiveWorkflow_RunFileNotFound(t *testing.T) {
+	old1, old2 := flagRun, flagRunFile
+	defer func() { flagRun, flagRunFile = old1, old2 }()
+	flagRun = ""
+	flagRunFile = "/nonexistent/deploy.yaml"
+
+	_, err := loadActiveWorkflow()
+	if err == nil {
+		t.Error("expected error for non-existent --run-file path")
 	}
 }

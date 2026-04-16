@@ -1,0 +1,15 @@
+name: greet
+description: A simple greeting workflow used as a sub-workflow
+version: "1.0.0"
+inputs:
+  name:
+    type: string
+    required: true
+    description: Who to greet
+steps:
+  say-hello:
+    shell: echo "Hello, ${{ inputs.name }}! Running on ${{ target.instance_id }}"
+    outputs:
+      message: "${{ stdout }}"
+outputs:
+  greeting: "${{ steps.say-hello.outputs.message }}"

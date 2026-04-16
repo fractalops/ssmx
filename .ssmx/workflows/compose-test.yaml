@@ -1,0 +1,19 @@
+name: compose-test
+description: "Tests workflow composition — calls greet sub-workflow then uses its output"
+version: "0.1.0"
+inputs:
+  who:
+    type: string
+    default: World
+    description: Name to pass to sub-workflow
+steps:
+  call-greet:
+    workflow: greet
+    with:
+      name: "${{ inputs.who }}"
+  use-output:
+    shell: echo "Sub-workflow said -> ${{ steps.call-greet.outputs.greeting }}"
+    needs:
+      - call-greet
+outputs:
+  result: "${{ steps.use-output.stdout }}"

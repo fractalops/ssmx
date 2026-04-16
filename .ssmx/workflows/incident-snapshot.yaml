@@ -1,0 +1,140 @@
+name: incident-snapshot
+description: >
+  Incident response diagnostic snapshot. Gathers system state, service
+  logs, resource pressure, and network info in parallel — the first thing
+  to run when something is wrong and you need situational awareness fast.
+
+  All steps are read-only. Safe to run on a production host mid-incident.
+
+  Usage:
+    ssmx web-prod --run incident-snapshot
+    ssmx web-prod --run incident-snapshot --param service=nginx --param log_lines=100
+    ssmx web-prod --run incident-snapshot --format json > snapshot.json
+version: "1.0.0"
+
+inputs:
+  service:
+    type: string
+    default: ""
+    description: "Optional systemd service name to collect logs for"
+  log_lines:
+    type: int
+    default: 50
+    description: "Number of log lines to collect per source"
+  include_dmesg:
+    type: bool
+    default: false
+    description: "Include dmesg output (requires root or CAP_SYSLOG)"
+
+steps:
+  gather:
+    parallel:
+      host-state:
+        shell: |
+          echo "=== hostname ==="
+          hostname
+          echo "=== uname ==="
+          uname -a
+          echo "=== uptime ==="
+          uptime
+          echo "=== who ==="
+          who || true
+
+      memory-pressure:
+        shell: |
+          echo "=== memory ==="
+          free -h
+          echo "=== vmstat ==="
+          vmstat 1 3 2>/dev/null || true
+          echo "=== oom-killer (last 20 lines) ==="
+          dmesg 2>/dev/null | grep -i "oom\|killed process" | tail -20 || \
+            journalctl -k --no-pager -n 20 2>/dev/null | grep -i "oom\|killed" || \
+            echo "(no OOM events found or dmesg unavailable)"
+
+      disk-pressure:
+        shell: |
+          echo "=== df ==="
+          df -h
+          echo "=== inode usage ==="
+          df -i
+          echo "=== top 10 dirs by size under / ==="
+          du -sh /* 2>/dev/null | sort -rh | head -10 || true
+
+      cpu-pressure:
+        shell: |
+          echo "=== load ==="
+          uptime
+          echo "=== top 15 processes by cpu ==="
+          ps aux --sort=-%cpu 2>/dev/null | head -16 || ps aux | sort -k3 -rn | head -16
+          echo "=== top 15 processes by mem ==="
+          ps aux --sort=-%mem 2>/dev/null | head -16 || ps aux | sort -k4 -rn | head -16
+
+      network-state:
+        shell: |
+          echo "=== interfaces ==="
+          ip addr 2>/dev/null || ifconfig 2>/dev/null || true
+          echo "=== routing ==="
+          ip route 2>/dev/null || netstat -rn 2>/dev/null || true
+          echo "=== listening ports ==="
+          ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || true
+          echo "=== connection counts by state ==="
+          ss -s 2>/dev/null || netstat -s 2>/dev/null | head -20 || true
+
+      recent-logins:
+        shell: |
+          echo "=== last logins ==="
+          last -n 20 2>/dev/null || true
+          echo "=== auth log (last ${{ inputs.log_lines }} lines) ==="
+          journalctl -u ssh --no-pager -n ${{ inputs.log_lines }} 2>/dev/null || \
+            tail -n ${{ inputs.log_lines }} /var/log/auth.log 2>/dev/null || \
+            echo "(auth log unavailable)"
+
+  service-logs:
+    shell: |
+      SVC="${{ inputs.service }}"
+      if [ -z "$SVC" ]; then
+        echo "=== system journal (last ${{ inputs.log_lines }} lines) ==="
+        journalctl --no-pager -n ${{ inputs.log_lines }} 2>/dev/null || \
+          tail -n ${{ inputs.log_lines }} /var/log/syslog 2>/dev/null || \
+          tail -n ${{ inputs.log_lines }} /var/log/messages 2>/dev/null || \
+          echo "(syslog unavailable)"
+      else
+        echo "=== ${SVC} status ==="
+        systemctl status "${SVC}" --no-pager --lines 0 2>/dev/null || true
+        echo "=== ${SVC} journal (last ${{ inputs.log_lines }} lines) ==="
+        journalctl -u "${SVC}" --no-pager -n ${{ inputs.log_lines }} 2>/dev/null || \
+          echo "(journalctl unavailable for ${SVC})"
+      fi
+    needs: [gather]
+
+  dmesg-check:
+    shell: |
+      if [ "${{ inputs.include_dmesg }}" = "true" ]; then
+        echo "=== dmesg (last ${{ inputs.log_lines }} lines) ==="
+        sudo dmesg 2>/dev/null | tail -n ${{ inputs.log_lines }} || \
+          dmesg 2>/dev/null | tail -n ${{ inputs.log_lines }} || \
+          echo "(dmesg unavailable)"
+      else
+        echo "(dmesg collection skipped — set include_dmesg=true to enable)"
+      fi
+    needs: [gather]
+
+  summarize:
+    shell: |
+      LOAD=$(uptime | awk -F'load average:' '{print $2}' | awk -F, '{print $1}' | tr -d ' ')
+      MEM_FREE=$(free -h | awk '/^Mem:/{print $4}')
+      DISK_ROOT=$(df -h / | awk 'NR==2{print $4}')
+      HOST=$(hostname)
+      SVC="${{ inputs.service }}"
+      if [ -n "$SVC" ]; then
+        SVC_STATUS=$(systemctl is-active "${SVC}" 2>/dev/null || echo "unknown")
+        echo "host=${HOST} load=${LOAD} mem_free=${MEM_FREE} disk_free_root=${DISK_ROOT} service=${SVC} service_status=${SVC_STATUS}"
+      else
+        echo "host=${HOST} load=${LOAD} mem_free=${MEM_FREE} disk_free_root=${DISK_ROOT}"
+      fi
+    needs: [service-logs, dmesg-check]
+    outputs:
+      summary: "${{ stdout }}"
+
+outputs:
+  summary: "${{ steps.summarize.outputs.summary }}"

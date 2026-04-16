@@ -1,0 +1,78 @@
+name: test-inputs
+description: >
+  Engine test: input handling. Covers all three types (string, int, bool),
+  required vs optional, explicit defaults, empty-string optional, and env
+  interpolation at workflow level and step level. Run with --dry-run first
+  to verify resolution, then run for live confirmation.
+
+  Usage:
+    ssmx web-prod --run test-inputs \
+      --param required_str=hello \
+      --param required_int=42
+version: "1.0.0"
+
+inputs:
+  required_str:
+    type: string
+    required: true
+    description: "A required string input — must be provided"
+  required_int:
+    type: int
+    required: true
+    description: "A required int input — must be provided"
+  optional_str:
+    type: string
+    default: "default-value"
+    description: "Optional string with a default"
+  optional_bool:
+    type: bool
+    default: false
+    description: "Optional bool with a false default"
+  optional_empty:
+    type: string
+    description: "Optional string with no default — resolves to empty string"
+
+env:
+  WORKFLOW_ENV_KEY: "workflow-env-value"
+  INTERPOLATED_ENV: "prefix-${{ inputs.optional_str }}-suffix"
+
+steps:
+  echo-strings:
+    shell: |
+      echo "required_str=${{ inputs.required_str }}"
+      echo "optional_str=${{ inputs.optional_str }}"
+      echo "optional_empty='${{ inputs.optional_empty }}'"
+
+  echo-int:
+    shell: |
+      echo "required_int=${{ inputs.required_int }}"
+      DOUBLED=$(( ${{ inputs.required_int }} * 2 ))
+      echo "doubled=${DOUBLED}"
+
+  echo-bool:
+    shell: |
+      echo "optional_bool=${{ inputs.optional_bool }}"
+      if [ "${{ inputs.optional_bool }}" = "true" ]; then
+        echo "bool branch: true path"
+      else
+        echo "bool branch: false path"
+      fi
+
+  echo-env:
+    shell: |
+      echo "WORKFLOW_ENV_KEY=${WORKFLOW_ENV_KEY}"
+      echo "INTERPOLATED_ENV=${INTERPOLATED_ENV}"
+    env:
+      STEP_ENV_KEY: "step-env-value"
+      STEP_OVERRIDES_WORKFLOW: "step-wins"
+    needs: [echo-strings, echo-int, echo-bool]
+
+  capture-outputs:
+    shell: |
+      echo "${{ inputs.required_str }}:${{ inputs.required_int }}:${{ inputs.optional_bool }}"
+    needs: [echo-env]
+    outputs:
+      combined: "${{ stdout }}"
+
+outputs:
+  combined: "${{ steps.capture-outputs.outputs.combined }}"

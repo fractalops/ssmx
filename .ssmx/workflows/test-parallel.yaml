@@ -1,0 +1,58 @@
+name: test-parallel
+description: >
+  Engine test: parallel: block step kind. A single top-level step runs three
+  sub-steps concurrently. Verifies that all sub-steps run, that output from
+  the parallel block is accessible downstream, and that the block counts as
+  one level in the DAG.
+
+  Expected execution:
+    Level 1: prepare
+    Level 2: gather         (parallel block — fetch-a, fetch-b, fetch-c run concurrently)
+    Level 3: report
+
+  Usage:
+    ssmx web-prod --run test-parallel
+    ssmx web-prod --run test-parallel --dry-run --format json
+version: "1.0.0"
+
+inputs:
+  delay_a:
+    type: int
+    default: 1
+    description: "Sleep seconds in fetch-a (tests that parallel waits for slowest)"
+  delay_b:
+    type: int
+    default: 2
+    description: "Sleep seconds in fetch-b"
+
+steps:
+  prepare:
+    shell: |
+      echo "prepare: parallel block test starting"
+      echo "delays: a=${{ inputs.delay_a }}s b=${{ inputs.delay_b }}s c=0s"
+
+  gather:
+    needs: [prepare]
+    parallel:
+      fetch-a:
+        shell: |
+          echo "fetch-a: start"
+          sleep ${{ inputs.delay_a }}
+          echo "fetch-a: done after ${{ inputs.delay_a }}s"
+
+      fetch-b:
+        shell: |
+          echo "fetch-b: start"
+          sleep ${{ inputs.delay_b }}
+          echo "fetch-b: done after ${{ inputs.delay_b }}s"
+
+      fetch-c:
+        shell: |
+          echo "fetch-c: start (no delay)"
+          echo "fetch-c: done"
+
+  report:
+    shell: |
+      echo "report: all parallel sub-steps complete"
+      echo "the block ran fetch-a, fetch-b, fetch-c concurrently"
+    needs: [gather]

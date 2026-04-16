@@ -1,0 +1,62 @@
+name: test-on-failure
+description: >
+  Engine test: on-failure: rollback wiring. Invokes lib-maybe-fail as a
+  child workflow step. When fail=true (default), lib-maybe-fail exits 1 and
+  the on-failure: rollback workflow runs. When fail=false, the success path
+  runs and rollback is skipped.
+
+  Covers:
+    - on-failure: field on a workflow: step
+    - rollback workflow receives with: inputs
+    - success path skips the rollback
+    - always: true cleanup runs on both paths
+
+  Usage (failure path):
+    ssmx web-prod --run test-on-failure
+
+  Usage (success path):
+    ssmx web-prod --run test-on-failure --param fail=false
+version: "1.0.0"
+
+inputs:
+  fail:
+    type: bool
+    default: true
+    description: "Passed to lib-maybe-fail — true triggers the failure + rollback path"
+
+steps:
+  before:
+    shell: |
+      echo "before: acquiring resources (simulated)"
+      echo "before: writing state to /tmp/test-on-failure.lock"
+      echo "acquired" > /tmp/test-on-failure.lock
+    outputs:
+      lock_written: "${{ stdout }}"
+
+  work:
+    workflow: lib-maybe-fail
+    with:
+      fail: "${{ inputs.fail }}"
+      message: "test-on-failure: intentional failure to exercise rollback"
+    needs: [before]
+    on-failure:
+      workflow: lib-maybe-fail
+      with:
+        fail: "false"
+        message: "test-on-failure: rollback invoked — cleaning up"
+
+  after:
+    shell: |
+      echo "after: work succeeded, lock_written=${{ steps.before.outputs.lock_written }}"
+    needs: [work]
+
+  cleanup:
+    shell: |
+      if [ -f /tmp/test-on-failure.lock ]; then
+        rm -f /tmp/test-on-failure.lock
+        echo "cleanup: removed lock file"
+      else
+        echo "cleanup: no lock file found"
+      fi
+    needs: [after]
+    always: true

@@ -1,0 +1,18 @@
+name: docker-state
+version: "1.0.0"
+steps:
+  check:
+    shell: |
+      echo "=== running containers ==="
+      sudo docker ps --format "  {{.Names}}  {{.Status}}  labels={{.Labels}}"
+      echo "=== all containers ==="
+      sudo docker ps -a --format "  {{.Names}}  {{.Status}}"
+      echo "=== debug files ==="
+      cat /tmp/ssmx-dbg.txt 2>/dev/null || echo "(no ssmx-dbg.txt)"
+      echo "---"
+      cat /tmp/docker-run.out 2>/dev/null || echo "(no docker-run.out)"
+    outputs:
+      out: "${{ stdout }}"
+  print:
+    shell: echo "${{ steps.check.outputs.out }}"
+    needs: [check]

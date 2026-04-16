@@ -1,0 +1,15 @@
+name: parallel-test
+description: "E2E test for parallel: step kind — fetches system facts concurrently"
+version: "1.0.0"
+steps:
+  gather:
+    parallel:
+      get-hostname:
+        shell: hostname
+      get-uptime:
+        shell: uptime
+      get-os:
+        shell: grep PRETTY_NAME /etc/os-release | cut -d= -f2 | tr -d '"'
+  summarize:
+    shell: echo "Parallel gather complete on ${{ target.instance_id }}"
+    needs: [gather]

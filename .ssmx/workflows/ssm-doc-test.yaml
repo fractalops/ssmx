@@ -1,0 +1,13 @@
+name: ssm-doc-test
+description: "E2E test for ssm-doc: step kind — runs AWS-RunShellScript via SSM document API"
+version: "1.0.0"
+steps:
+  run-via-doc:
+    ssm-doc: AWS-RunShellScript
+    params:
+      commands: echo "ssm-doc step running on $(hostname)"
+    outputs:
+      result: "${{ stdout }}"
+  confirm:
+    shell: echo "ssm-doc output was -> ${{ steps.run-via-doc.outputs.result }}"
+    needs: [run-via-doc]

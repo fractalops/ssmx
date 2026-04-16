@@ -1,0 +1,69 @@
+name: patch-fleet
+description: >
+  Fleet patching via AWS-RunPatchBaseline. By default runs in Scan mode
+  (read-only — reports missing patches without installing). Set
+  operation=Install to apply patches.
+
+  Use --concurrency to control how many hosts are patched simultaneously.
+  A reboot is triggered only when operation=Install and reboot=IfNeeded.
+
+  Targets are resolved from workflow targets: or --tag CLI flags.
+  A positional instance arg runs on a single host.
+
+  Usage (scan — safe, read-only):
+    ssmx --run patch-fleet --tag env=prod
+
+  Usage (install, rolling, 2 at a time):
+    ssmx --run patch-fleet --tag env=prod \
+      --param operation=Install \
+      --param reboot=IfNeeded \
+      --concurrency 2
+
+  Usage (single host):
+    ssmx web-prod --run patch-fleet --param operation=Install
+version: "1.0.0"
+
+targets:
+  tags:
+    patch-group: default
+  max-concurrency: 3
+
+inputs:
+  operation:
+    type: string
+    default: "Scan"
+    description: "Scan (read-only) or Install"
+  reboot:
+    type: string
+    default: "NoReboot"
+    description: "NoReboot or IfNeeded (only meaningful with operation=Install)"
+  baseline_override:
+    type: string
+    default: ""
+    description: "Optional patch baseline ARN override. Empty uses the default baseline."
+
+steps:
+  preflight:
+    workflow: lib-preflight
+    with:
+      min_disk_gb: "2"
+      require_commands: "systemctl"
+
+  patch:
+    ssm-doc: AWS-RunPatchBaseline
+    params:
+      Operation: "${{ inputs.operation }}"
+      RebootOption: "${{ inputs.reboot }}"
+      BaselineOverride: "${{ inputs.baseline_override }}"
+    needs: [preflight]
+
+  report:
+    shell: |
+      echo "patch operation=${{ inputs.operation }} reboot=${{ inputs.reboot }} complete"
+      echo "instance=${{ target.instance_id }}"
+    needs: [patch]
+    outputs:
+      status: "${{ stdout }}"
+
+outputs:
+  status: "${{ steps.report.outputs.status }}"

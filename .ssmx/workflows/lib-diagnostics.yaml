@@ -1,0 +1,58 @@
+name: lib-diagnostics
+description: >
+  Parallel host diagnostic snapshot — collects OS info, resource usage,
+  top processes, and network state in one shot. Safe (read-only). Designed
+  to be called as a sub-workflow at the start of incident response or
+  operational workflows that need situational awareness.
+version: "1.0.0"
+
+steps:
+  gather:
+    parallel:
+      os-info:
+        shell: |
+          echo "=== hostname ==="
+          hostname
+          echo "=== uname ==="
+          uname -a
+          echo "=== uptime ==="
+          uptime
+          echo "=== os-release ==="
+          cat /etc/os-release 2>/dev/null || cat /etc/system-release 2>/dev/null || echo "(unknown)"
+
+      resources:
+        shell: |
+          echo "=== memory ==="
+          free -h
+          echo "=== disk ==="
+          df -h
+          echo "=== cpu-count ==="
+          nproc
+
+      processes:
+        shell: |
+          echo "=== top 10 processes by cpu ==="
+          ps aux --sort=-%cpu 2>/dev/null | head -11 || ps aux | sort -k3 -rn | head -11
+          echo "=== process count ==="
+          ps aux | wc -l
+
+      network:
+        shell: |
+          echo "=== interfaces ==="
+          ip addr 2>/dev/null || ifconfig 2>/dev/null || echo "(ip/ifconfig not available)"
+          echo "=== listening ports ==="
+          ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || echo "(ss/netstat not available)"
+
+  summarize:
+    shell: |
+      LOAD=$(uptime | awk -F'load average:' '{print $2}' | awk -F, '{print $1}' | tr -d ' ')
+      MEM_FREE=$(free -h | awk '/^Mem:/{print $4}')
+      DISK_ROOT=$(df -h / | awk 'NR==2{print $4}')
+      HOST=$(hostname)
+      echo "host=${HOST} load=${LOAD} mem_free=${MEM_FREE} disk_free_root=${DISK_ROOT}"
+    needs: [gather]
+    outputs:
+      summary: "${{ stdout }}"
+
+outputs:
+  summary: "${{ steps.summarize.outputs.summary }}"

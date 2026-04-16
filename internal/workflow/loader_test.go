@@ -154,3 +154,71 @@ func TestLoad_StdinEmpty(t *testing.T) {
 	// Empty stdin yields a valid but empty workflow — the important thing is it does not panic.
 	_, _ = Load("-")
 }
+
+func TestLoadFile_ExplicitPath(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString("name: file-wf\nsteps:\n  s:\n    shell: echo hi\n")
+	f.Close()
+
+	wf, err := LoadFile(f.Name())
+	if err != nil {
+		t.Fatalf("LoadFile: %v", err)
+	}
+	if wf.Name != "file-wf" {
+		t.Errorf("Name = %q, want file-wf", wf.Name)
+	}
+}
+
+func TestLoadFile_NotFound(t *testing.T) {
+	_, err := LoadFile("/nonexistent/path/deploy.yaml")
+	if err == nil {
+		t.Error("expected error for non-existent path")
+	}
+}
+
+func TestLoadFile_InvalidYAML(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString(":\tinvalid:yaml:")
+	f.Close()
+
+	_, err = LoadFile(f.Name())
+	if err == nil {
+		t.Error("expected error for invalid YAML")
+	}
+}
+
+func TestLoadFile_ValidationError(t *testing.T) {
+	// A step with no kind (no shell/ssm-doc/workflow/parallel) fails validation.
+	f, err := os.CreateTemp(t.TempDir(), "*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString("name: bad-wf\nsteps:\n  s:\n    timeout: 30s\n")
+	f.Close()
+
+	_, err = LoadFile(f.Name())
+	if err == nil {
+		t.Error("expected validation error for step with no kind")
+	}
+}
+
+func TestLoadFile_Stdin(t *testing.T) {
+	yaml := "name: stdin-file-wf\nsteps:\n  s:\n    shell: echo hi\n"
+	old := stdinReader
+	stdinReader = bytes.NewReader([]byte(yaml))
+	defer func() { stdinReader = old }()
+
+	wf, err := LoadFile("-")
+	if err != nil {
+		t.Fatalf("LoadFile(\"-\"): %v", err)
+	}
+	if wf.Name != "stdin-file-wf" {
+		t.Errorf("Name = %q, want stdin-file-wf", wf.Name)
+	}
+}

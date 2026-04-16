@@ -1,0 +1,93 @@
+name: rolling-service-restart
+description: >
+  Rolling systemd service restart with preflight, drain, restart, and
+  health verification. Safe for fleet use with --concurrency to control
+  the blast radius.
+
+  For single-host use or --concurrency 1, this is a controlled restart.
+  For fleet use, combine with --concurrency to roll across hosts one or
+  a few at a time.
+
+  Usage:
+    ssmx web-prod --run rolling-service-restart --param service=nginx
+    ssmx --run rolling-service-restart --tag role=web --param service=nginx --concurrency 2
+version: "1.0.0"
+
+inputs:
+  service:
+    type: string
+    required: true
+    description: "systemd service name (e.g. nginx, myapp, docker)"
+  health_check_cmd:
+    type: string
+    default: ""
+    description: >
+      Optional shell command to run as health check after restart.
+      If empty, the step checks systemctl is-active. Example:
+      "curl -sf http://localhost:8080/healthz"
+  restart_timeout:
+    type: string
+    default: "60s"
+    description: "How long to wait for the service to restart (systemctl timeout)"
+
+steps:
+  preflight:
+    workflow: lib-preflight
+    with:
+      require_commands: "systemctl"
+
+  pre-status:
+    shell: |
+      echo "=== pre-restart status ==="
+      systemctl status ${{ inputs.service }} --no-pager --lines 5 || true
+      echo "=== is-active ==="
+      systemctl is-active ${{ inputs.service }} || true
+    needs: [preflight]
+
+  restart:
+    shell: |
+      echo "restarting ${{ inputs.service }}..."
+      sudo systemctl restart ${{ inputs.service }}
+      echo "restart command completed"
+    needs: [pre-status]
+    timeout: "${{ inputs.restart_timeout }}"
+
+  wait-active:
+    shell: |
+      echo "waiting for ${{ inputs.service }} to become active..."
+      for i in $(seq 1 30); do
+        if systemctl is-active --quiet ${{ inputs.service }}; then
+          echo "${{ inputs.service }} is active after ${i} poll(s)"
+          exit 0
+        fi
+        echo "  attempt ${i}/30 — not active yet, waiting 2s..."
+        sleep 2
+      done
+      echo "${{ inputs.service }} did not become active after 60s" >&2
+      exit 1
+    needs: [restart]
+    timeout: 2m
+
+  health-check:
+    shell: |
+      HC="${{ inputs.health_check_cmd }}"
+      if [ -z "$HC" ]; then
+        systemctl is-active --quiet ${{ inputs.service }} && \
+          echo "health: ${{ inputs.service }} is active" || \
+          { echo "health: ${{ inputs.service }} is not active" >&2; exit 1; }
+      else
+        echo "running custom health check: ${HC}"
+        eval "${HC}" && echo "health: check passed" || { echo "health: check failed" >&2; exit 1; }
+      fi
+    needs: [wait-active]
+
+  post-status:
+    shell: |
+      echo "=== post-restart status ==="
+      systemctl status ${{ inputs.service }} --no-pager --lines 5
+    needs: [health-check]
+    outputs:
+      status: "${{ stdout }}"
+
+outputs:
+  status: "${{ steps.post-status.outputs.status }}"

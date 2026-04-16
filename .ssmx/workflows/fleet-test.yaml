@@ -1,0 +1,14 @@
+name: fleet-test
+description: Fleet targeting smoke test — runs on all matched instances concurrently
+version: "1.0.0"
+targets:
+  tags:
+    Namespace: ssmx
+  max-concurrency: 0
+steps:
+  whoami:
+    shell: echo "Instance $(curl -sf http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || hostname) running as $(whoami)"
+  check-uptime:
+    shell: uptime
+    needs:
+      - whoami

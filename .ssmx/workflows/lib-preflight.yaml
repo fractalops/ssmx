@@ -1,0 +1,61 @@
+name: lib-preflight
+description: >
+  Host readiness preflight — checks free disk space, system load, and that
+  required commands are present. Safe (read-only). Designed to be called as
+  a sub-workflow at the start of any deploy or maintenance workflow.
+version: "1.0.0"
+
+inputs:
+  min_disk_gb:
+    type: int
+    default: 1
+    description: Minimum free disk space on / in GB
+  require_commands:
+    type: string
+    default: ""
+    description: Space-separated list of commands that must exist (e.g. "docker curl")
+
+steps:
+  check-disk:
+    shell: |
+      FREE_KB=$(df -k / | awk 'NR==2 {print $4}')
+      FREE_GB=$((FREE_KB / 1024 / 1024))
+      echo "${FREE_GB}GB free on /"
+      if [ "$FREE_GB" -lt "${{ inputs.min_disk_gb }}" ]; then
+        echo "PREFLIGHT FAIL: need ${{ inputs.min_disk_gb }}GB free, have ${FREE_GB}GB" >&2
+        exit 1
+      fi
+    outputs:
+      disk_free: "${{ stdout }}"
+
+  check-load:
+    shell: |
+      LOAD=$(uptime | awk -F'load average:' '{print $2}' | awk -F, '{print $1}' | tr -d ' ')
+      CPUS=$(nproc)
+      echo "1-min load=${LOAD} cpus=${CPUS}"
+    outputs:
+      load: "${{ stdout }}"
+
+  check-commands:
+    shell: |
+      CMDS="${{ inputs.require_commands }}"
+      if [ -z "$CMDS" ]; then
+        echo "no command requirements specified"
+        exit 0
+      fi
+      MISSING=""
+      for cmd in $CMDS; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+          MISSING="$MISSING $cmd"
+        fi
+      done
+      if [ -n "$MISSING" ]; then
+        echo "PREFLIGHT FAIL: missing commands:$MISSING" >&2
+        exit 1
+      fi
+      echo "all required commands present: $CMDS"
+    needs: [check-disk, check-load]
+
+outputs:
+  disk_free: "${{ steps.check-disk.outputs.disk_free }}"
+  load: "${{ steps.check-load.outputs.load }}"

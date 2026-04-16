@@ -1,0 +1,29 @@
+name: debug-docker
+version: "1.0.0"
+steps:
+  test:
+    shell: |
+      NEXT=green
+      NETWORK=traefik
+      BT='`'
+      HOST_RULE="Host(${BT}myapp.example.com${BT})"
+      echo "HOST_RULE=${HOST_RULE}"
+      echo "--- docker run output ---"
+      sudo docker run -d \
+        --name "myapp-${NEXT}-debug" \
+        --network "${NETWORK}" \
+        --label "ssmx.app=myapp" \
+        --label "ssmx.slot=${NEXT}" \
+        --label "traefik.http.routers.myapp.rule=${HOST_RULE}" \
+        --label "traefik.http.services.myapp.loadbalancer.server.port=80" \
+        --label "traefik.enable=true" \
+        nginx:stable-alpine 2>&1 || true
+      echo "docker exit=$?"
+      sudo docker ps -a --filter "name=myapp-green-debug" --format "{{.Names}} {{.Status}}"
+    outputs:
+      out: "${{ stdout }}"
+  print:
+    shell: |
+      sudo docker rm -f myapp-green-debug 2>/dev/null || true
+      echo "${{ steps.test.outputs.out }}"
+    needs: [test]

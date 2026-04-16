@@ -1,0 +1,37 @@
+name: lib-maybe-fail
+description: >
+  Controlled failure workflow for testing on-failure: and cleanup wiring.
+  Exits with a non-zero code when fail=true (the default). Use as a child
+  workflow step to verify that on-failure: rollback workflows are triggered
+  and that always: true cleanup steps run on the failure path.
+version: "1.0.0"
+
+inputs:
+  fail:
+    type: bool
+    default: true
+    description: "When true, the work step exits 1 and triggers on-failure wiring"
+  message:
+    type: string
+    default: "simulated failure"
+    description: "Message to emit before failing"
+
+steps:
+  setup:
+    shell: |
+      echo "lib-maybe-fail: setup complete (fail=${{ inputs.fail }})"
+
+  work:
+    shell: |
+      if [ "${{ inputs.fail }}" = "true" ]; then
+        echo "${{ inputs.message }}" >&2
+        exit 1
+      fi
+      echo "lib-maybe-fail: work succeeded"
+    needs: [setup]
+
+  cleanup:
+    shell: |
+      echo "lib-maybe-fail: cleanup ran (always)"
+    needs: [work]
+    always: true

@@ -222,3 +222,80 @@ func TestEvalBool_WithExpressionResolution(t *testing.T) {
 		t.Error("steps.smoke.success = true should be truthy")
 	}
 }
+
+func TestEvalBool_NegationOfTrue(t *testing.T) {
+	got, err := EvalBool("!true", ExprContext{})
+	if err != nil {
+		t.Fatalf("EvalBool: %v", err)
+	}
+	if got {
+		t.Error("!true should be false")
+	}
+}
+
+func TestEvalBool_NegationOfFalse(t *testing.T) {
+	got, err := EvalBool("!false", ExprContext{})
+	if err != nil {
+		t.Fatalf("EvalBool: %v", err)
+	}
+	if !got {
+		t.Error("!false should be true")
+	}
+}
+
+func TestEvalBool_NegationWithTrueInput(t *testing.T) {
+	ctx := ExprContext{Inputs: map[string]string{"skip": "true"}}
+	got, err := EvalBool("!${{ inputs.skip }}", ctx)
+	if err != nil {
+		t.Fatalf("EvalBool: %v", err)
+	}
+	if got {
+		t.Error("!true input should be false")
+	}
+}
+
+func TestEvalBool_NegationWithFalseInput(t *testing.T) {
+	ctx := ExprContext{Inputs: map[string]string{"skip": "false"}}
+	got, err := EvalBool("!${{ inputs.skip }}", ctx)
+	if err != nil {
+		t.Fatalf("EvalBool: %v", err)
+	}
+	if !got {
+		t.Error("!false input should be true")
+	}
+}
+
+func TestEvalBool_NegationOfStepSuccess(t *testing.T) {
+	ctx := ExprContext{Steps: map[string]*StepResult{"check": {Success: true}}}
+	got, err := EvalBool("!${{ steps.check.success }}", ctx)
+	if err != nil {
+		t.Fatalf("EvalBool: %v", err)
+	}
+	if got {
+		t.Error("!true step.success should be false")
+	}
+}
+
+func TestEvalBool_NegationOfStepSuccessFalse(t *testing.T) {
+	ctx := ExprContext{Steps: map[string]*StepResult{"check": {Success: false}}}
+	got, err := EvalBool("!${{ steps.check.success }}", ctx)
+	if err != nil {
+		t.Fatalf("EvalBool: %v", err)
+	}
+	if !got {
+		t.Error("!false step.success should be true")
+	}
+}
+
+// TestEvalBool_NotEqualUnaffected verifies that the != operator is not
+// confused with the ! prefix — "lhs != rhs" must still work correctly.
+func TestEvalBool_NotEqualUnaffected(t *testing.T) {
+	ctx := ExprContext{Steps: map[string]*StepResult{"s": {ExitCode: 1}}}
+	got, err := EvalBool("${{ steps.s.exitCode }} != 0", ctx)
+	if err != nil {
+		t.Fatalf("EvalBool: %v", err)
+	}
+	if !got {
+		t.Error("1 != 0 should still be true after adding negation support")
+	}
+}

@@ -1,0 +1,11 @@
+name: instance-ids-test
+description: "E2E test for targets.instance-ids: fleet targeting"
+version: "1.0.0"
+targets:
+  instance-ids:
+    - i-0ade4eb39e0082142
+    - i-077accfad9d71160a
+  max-concurrency: 0
+steps:
+  whoami:
+    shell: 'echo "instance-ids targeting: running on $(curl -sf http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || hostname)"'

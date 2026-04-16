@@ -101,6 +101,31 @@ func searchDirs() ([]string, error) {
 	}, nil
 }
 
+// LoadFile reads and parses a workflow from an explicit file path.
+// Pass "-" to read from stdin — same as Load("-").
+func LoadFile(path string) (*Workflow, error) {
+	if path == "-" {
+		if f, ok := stdinReader.(*os.File); ok {
+			if term.IsTerminal(int(f.Fd())) {
+				return nil, fmt.Errorf("stdin is a terminal; pipe a workflow YAML or redirect a file")
+			}
+		}
+		return loadFromReader(stdinReader, "<stdin>")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+	var wf Workflow
+	if err := yaml.Unmarshal(data, &wf); err != nil {
+		return nil, fmt.Errorf("parsing %s: %w", path, err)
+	}
+	if err := wf.Validate(); err != nil {
+		return nil, fmt.Errorf("validating %s: %w", path, err)
+	}
+	return &wf, nil
+}
+
 // loadFromReader parses and validates a workflow from r. source is used in
 // error messages (e.g. "<stdin>").
 func loadFromReader(r io.Reader, source string) (*Workflow, error) {

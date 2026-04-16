@@ -100,6 +100,27 @@ func buildDryRunPlan(wf *workflow.Workflow, rawInputs map[string]string) (*dryRu
 	}, nil
 }
 
+// loadActiveWorkflow returns the workflow specified by --run-file (explicit
+// path) or --run (discovered by name). Callers do not need to know which flag
+// was set.
+func loadActiveWorkflow() (*workflow.Workflow, error) {
+	if flagRunFile != "" {
+		return workflow.LoadFile(flagRunFile)
+	}
+	return workflow.Load(flagRun)
+}
+
+// runWorkflowInfoFromFile loads a workflow from an explicit file path and
+// writes its human-readable info to stdout.
+func runWorkflowInfoFromFile(path string) error {
+	wf, err := workflow.LoadFile(path)
+	if err != nil {
+		return err
+	}
+	writeWorkflowInfo(os.Stdout, wf)
+	return nil
+}
+
 // runWorkflowFleet resolves a fleet of target instances and runs the workflow
 // against all of them concurrently. Fleet sources, in priority order:
 //  1. --tag flags (override workflow targets:)
@@ -133,7 +154,7 @@ func runWorkflowFleet(cmd *cobra.Command) error {
 		return err
 	}
 
-	wf, err := workflow.Load(flagRun)
+	wf, err := loadActiveWorkflow()
 	if err != nil {
 		return err
 	}
@@ -153,7 +174,11 @@ func runWorkflowFleet(cmd *cobra.Command) error {
 	}
 
 	if len(effectiveTags) == 0 && len(effectiveInstanceIDs) == 0 {
-		return fmt.Errorf("--run %q requires a target instance (e.g. ssmx web-prod --run %s), --tag flag, or workflow targets: block", wf.Name, wf.Name)
+		flag, example := "--run", wf.Name
+		if flagRunFile != "" {
+			flag, example = "--run-file", flagRunFile
+		}
+		return fmt.Errorf("workflow %q requires a target instance (e.g. ssmx web-prod %s %s), --tag flag, or workflow targets: block", wf.Name, flag, example)
 	}
 
 	instances, err := resolveFleet(ctx, awsCfg, effectiveTags, effectiveInstanceIDs)
@@ -288,7 +313,7 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 		return nil // user cancelled picker
 	}
 
-	wf, err := workflow.Load(flagRun)
+	wf, err := loadActiveWorkflow()
 	if err != nil {
 		return err
 	}
@@ -331,7 +356,7 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 		runOpts.Stderr = io.Discard
 	}
 
-	engine := workflow.New(awsCfg, inst.InstanceID, region, profile, cfg.DocAliases)
+	engine := workflow.New(awsCfg, inst.InstanceID, inst.Name, inst.PrivateIP, region, profile, cfg.DocAliases)
 	var summary *workflow.RunSummary
 	_, summary, err = engine.Run(ctx, wf, runOpts)
 	if flagFormat == "json" && summary != nil {

@@ -1,0 +1,62 @@
+name: smoke
+description: >
+  Engine self-test — quick sanity check that the workflow engine is
+  functioning correctly on the target instance. Runs in under 10 seconds.
+  No side effects. Safe to run on any host at any time.
+
+  Checks:
+    - shell steps execute and produce output
+    - outputs capture correctly
+    - output chaining works across steps
+    - parallel block runs
+    - lib-preflight sub-workflow is reachable and succeeds
+    - target expressions resolve
+
+  Usage:
+    ssmx web-prod --run smoke
+    ssmx --run smoke --tag env=prod --concurrency 5
+version: "1.0.0"
+
+steps:
+  echo:
+    shell: |
+      echo "smoke: instance=${{ target.instance_id }} ip=${{ target.private_ip }}"
+      echo "smoke-token"
+    outputs:
+      token: "${{ stdout }}"
+
+  chain:
+    shell: |
+      echo "smoke: chained token=${{ steps.echo.outputs.token }}"
+      echo "chain-ok"
+    needs: [echo]
+    outputs:
+      result: "${{ stdout }}"
+
+  parallel-check:
+    needs: [echo]
+    parallel:
+      side-a:
+        shell: echo "parallel side-a ok"
+      side-b:
+        shell: echo "parallel side-b ok"
+
+  preflight:
+    workflow: lib-preflight
+    with:
+      min_disk_gb: "1"
+      require_commands: "sh echo"
+    needs: [chain, parallel-check]
+
+  done:
+    shell: |
+      echo "smoke: all checks passed"
+      echo "chain_result=${{ steps.chain.outputs.result }}"
+      echo "disk_free=${{ steps.preflight.outputs.disk_free }}"
+      echo "load=${{ steps.preflight.outputs.load }}"
+    needs: [preflight]
+
+outputs:
+  result: "${{ steps.chain.outputs.result }}"
+  disk_free: "${{ steps.preflight.outputs.disk_free }}"
+  load: "${{ steps.preflight.outputs.load }}"

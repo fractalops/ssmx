@@ -181,6 +181,8 @@ func (wf *Workflow) ApplyInputs(provided map[string]string) (map[string]string, 
 		}
 		if input.Default != nil {
 			resolved[name] = fmt.Sprintf("%v", input.Default)
+		} else {
+			resolved[name] = ""
 		}
 	}
 	return resolved, nil

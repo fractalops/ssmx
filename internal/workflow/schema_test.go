@@ -161,6 +161,27 @@ func TestStepKind(t *testing.T) {
 	}
 }
 
+func TestApplyInputs_OptionalNoDefaultIsEmptyString(t *testing.T) {
+	wf := &Workflow{
+		Name: "w",
+		Inputs: map[string]*Input{
+			"network": {Type: "string", Required: false},
+		},
+		Steps: map[string]*Step{"s": {Shell: "echo x"}},
+	}
+	resolved, err := wf.ApplyInputs(nil)
+	if err != nil {
+		t.Fatalf("ApplyInputs: %v", err)
+	}
+	v, ok := resolved["network"]
+	if !ok {
+		t.Error("optional input with no default should be present in resolved map as empty string")
+	}
+	if v != "" {
+		t.Errorf("optional input with no default = %q, want empty string", v)
+	}
+}
+
 func TestApplyInputs_UnknownKeyReturnsError(t *testing.T) {
 	wf := &Workflow{
 		Name:  "w",

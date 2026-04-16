@@ -21,8 +21,8 @@ func NewFleetEngineWithConfig(cfg aws.Config, instances []awsclient.Instance, ma
 		maxConcurrency: maxConcurrency,
 		region:         region,
 		profile:        profile,
-		newEngine: func(instanceID string) *Engine {
-			return New(cfg, instanceID, region, profile, docAliases)
+		newEngine: func(inst awsclient.Instance) *Engine {
+			return New(cfg, inst.InstanceID, inst.Name, inst.PrivateIP, region, profile, docAliases)
 		},
 	}
 }
@@ -37,7 +37,7 @@ type FleetEngine struct {
 	profile        string
 	// newEngine is injectable for tests. Production code sets it via
 	// NewFleetEngineWithConfig. Must not be nil when Run is called.
-	newEngine func(instanceID string) *Engine
+	newEngine func(inst awsclient.Instance) *Engine
 }
 
 // Run executes wf against every instance in the fleet concurrently.
@@ -90,7 +90,7 @@ func (fe *FleetEngine) Run(ctx context.Context, wf *Workflow, opts RunOptions) (
 				prefix: fmt.Sprintf("  [%-20s]  ", label),
 			}
 
-			eng := fe.newEngine(inst.InstanceID)
+			eng := fe.newEngine(inst)
 			instOpts := RunOptions{
 				Inputs:    opts.Inputs,
 				DryRun:    opts.DryRun,

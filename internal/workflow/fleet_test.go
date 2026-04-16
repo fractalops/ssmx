@@ -30,9 +30,11 @@ func TestFleetEngine_RunsAllInstances(t *testing.T) {
 	fe := &FleetEngine{
 		instances:      instances,
 		maxConcurrency: 0,
-		newEngine: func(instanceID string) *Engine {
+		newEngine: func(inst awsclient.Instance) *Engine {
 			return &Engine{
-				instanceID: instanceID,
+				instanceID: inst.InstanceID,
+				name:       inst.Name,
+				privateIP:  inst.PrivateIP,
 				runner:     runner,
 				callStack:  []string{},
 				loader:     Load,
@@ -68,9 +70,11 @@ func TestFleetEngine_ReportsFailures(t *testing.T) {
 
 	fe := &FleetEngine{
 		instances: instances,
-		newEngine: func(instanceID string) *Engine {
+		newEngine: func(inst awsclient.Instance) *Engine {
 			return &Engine{
-				instanceID: instanceID,
+				instanceID: inst.InstanceID,
+				name:       inst.Name,
+				privateIP:  inst.PrivateIP,
 				runner:     runner,
 				callStack:  []string{},
 				loader:     Load,
@@ -107,9 +111,11 @@ func TestFleetEngine_SummaryCollected(t *testing.T) {
 
 	fe := &FleetEngine{
 		instances: instances,
-		newEngine: func(instanceID string) *Engine {
+		newEngine: func(inst awsclient.Instance) *Engine {
 			return &Engine{
-				instanceID: instanceID,
+				instanceID: inst.InstanceID,
+				name:       inst.Name,
+				privateIP:  inst.PrivateIP,
 				runner:     runner,
 				callStack:  []string{},
 				loader:     Load,

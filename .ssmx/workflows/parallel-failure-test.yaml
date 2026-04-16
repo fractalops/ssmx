@@ -1,0 +1,12 @@
+name: parallel-failure-test
+description: "E2E test for parallel: continue-all — one sub-step fails, others still run"
+version: "1.0.0"
+steps:
+  gather:
+    parallel:
+      will-succeed:
+        shell: echo "I ran"
+      will-fail:
+        shell: exit 1
+      also-succeeds:
+        shell: echo "I also ran"

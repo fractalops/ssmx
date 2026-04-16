@@ -29,13 +29,15 @@ var (
 
 // Workflow flags
 var (
-	flagRun          string
-	flagParams       []string
-	flagWorkflows    bool
-	flagWorkflowInfo string
-	flagDryRun       bool
-	flagConcurrency  int      // --concurrency N; 0 = unlimited
-	flagTags         []string // --tag key=value; used by --list filtering and --run fleet targeting
+	flagRun              string
+	flagRunFile          string
+	flagParams           []string
+	flagWorkflows        bool
+	flagWorkflowInfo     string
+	flagWorkflowInfoFile string
+	flagDryRun           bool
+	flagConcurrency      int      // --concurrency N; 0 = unlimited
+	flagTags             []string // --tag key=value; used by --list filtering and --run fleet targeting
 )
 
 type rootAction int
@@ -51,10 +53,11 @@ const (
 	actionForward                     // one or more -L flags
 	actionHealth                      // --health flag
 	actionRun                         // --run <workflow> with positional target
-	actionRunMissingTarget            // --run set but no positional target given
+	actionRunMissingTarget            // --run/--run-file set but no positional target given
 	actionWorkflows                   // --workflows: list available workflows
 	actionWorkflowInfo                // --workflow-info <name>: show workflow schema
-	actionRunFleet                    // --run with --tag flag and no positional instance
+	actionWorkflowInfoFile            // --workflow-info-file <path>: show workflow schema from file
+	actionRunFleet                    // --run/--run-file with --tag flag and no positional instance
 )
 
 type rootArgs struct {
@@ -68,16 +71,19 @@ type rootArgs struct {
 // dashAt is the index into args where -- appeared (-1 if absent), as returned
 // by cobra's ArgsLenAtDash().
 func parseRootArgs(interactive, list, configure, proxy, hasForwards, health bool, args []string, dashAt int,
-	run string, workflows bool, params []string, workflowInfo string, dryRun bool,
+	run, runFile string, workflows bool, params []string, workflowInfo, workflowInfoFile string, dryRun bool,
 	tags []string, concurrency int,
 ) rootArgs {
 	if workflows {
 		return rootArgs{action: actionWorkflows}
 	}
+	if workflowInfoFile != "" {
+		return rootArgs{action: actionWorkflowInfoFile, target: workflowInfoFile}
+	}
 	if workflowInfo != "" {
 		return rootArgs{action: actionWorkflowInfo, target: workflowInfo}
 	}
-	if run != "" {
+	if run != "" || runFile != "" {
 		if len(args) == 0 {
 			if len(tags) > 0 {
 				return rootArgs{action: actionRunFleet}
@@ -138,6 +144,17 @@ func validateFormat(allowed ...string) error {
 		flagFormat, strings.Join(allowed, ", "))
 }
 
+// checkMutuallyExclusive returns an error if flag pairs that cannot coexist are both set.
+func checkMutuallyExclusive() error {
+	if flagRun != "" && flagRunFile != "" {
+		return fmt.Errorf("--run and --run-file are mutually exclusive")
+	}
+	if flagWorkflowInfo != "" && flagWorkflowInfoFile != "" {
+		return fmt.Errorf("--workflow-info and --workflow-info-file are mutually exclusive")
+	}
+	return nil
+}
+
 // rejectFormatIfSet returns an error if the user explicitly passed --format.
 // Used by command modes that produce no structured output and do not interpret
 // the flag, so that ssmx web-prod --format json does not silently behave like
@@ -163,11 +180,14 @@ var rootCmd = &cobra.Command{
   ssmx web-prod -L 8080              forward local 8080 → instance:8080`,
 	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := checkMutuallyExclusive(); err != nil {
+			return err
+		}
 		parsed := parseRootArgs(
 			flagInteractive, flagList, flagConfigure,
 			flagProxy, len(flagForwards) > 0, flagHealth,
 			args, cmd.ArgsLenAtDash(),
-			flagRun, flagWorkflows, flagParams, flagWorkflowInfo, flagDryRun,
+			flagRun, flagRunFile, flagWorkflows, flagParams, flagWorkflowInfo, flagWorkflowInfoFile, flagDryRun,
 			flagTags, flagConcurrency,
 		)
 		switch parsed.action {
@@ -224,6 +244,11 @@ var rootCmd = &cobra.Command{
 				return err
 			}
 			return runWorkflowInfo(parsed.target)
+		case actionWorkflowInfoFile:
+			if err := rejectFormatIfSet(cmd); err != nil {
+				return err
+			}
+			return runWorkflowInfoFromFile(parsed.target)
 		}
 		return nil
 	},
@@ -268,10 +293,12 @@ func init() {
 	rootCmd.Flags().BoolVar(&flagPersist, "persist", false, "auto-reconnect port forwards on drop")
 	rootCmd.Flags().DurationVar(&flagTimeout, "timeout", 0, "timeout for one-shot exec (e.g. 30s, 2m); 0 means no timeout")
 	rootCmd.Flags().BoolVar(&flagHealth, "health", false, "run connectivity health checks for target")
-	rootCmd.Flags().StringVar(&flagRun, "run", "", "workflow to run")
+	rootCmd.Flags().StringVar(&flagRun, "run", "", "workflow to run by name")
+	rootCmd.Flags().StringVar(&flagRunFile, "run-file", "", "workflow to run from an explicit file path (use - for stdin)")
 	rootCmd.Flags().StringArrayVar(&flagParams, "param", nil, "workflow input: key=value (repeatable)")
 	rootCmd.Flags().BoolVar(&flagWorkflows, "workflows", false, "list available workflows")
-	rootCmd.Flags().StringVar(&flagWorkflowInfo, "workflow-info", "", "show schema for a workflow")
+	rootCmd.Flags().StringVar(&flagWorkflowInfo, "workflow-info", "", "show schema for a workflow by name")
+	rootCmd.Flags().StringVar(&flagWorkflowInfoFile, "workflow-info-file", "", "show schema for a workflow from an explicit file path")
 	rootCmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "print resolved steps without executing")
 	rootCmd.Flags().IntVar(&flagConcurrency, "concurrency", 0, "max instances to run concurrently (0 = unlimited)")
 	rootCmd.Flags().StringArrayVar(&flagTags, "tag", nil, "filter instances by tag key=value (repeatable); works with --list and --run")

@@ -5,30 +5,55 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/fractalops/ssmx)](https://github.com/fractalops/ssmx/releases)
 
-A utility that aims to simplify aws ssm operations and user experience
+`ssmx` is an operator- and agent-friendly CLI for AWS Systems Manager.
 
+It makes SSM practical for day-to-day infrastructure work: connect to instances, run commands, forward ports, copy files, diagnose broken access, and automate multi-step workflows across fleets without opening inbound SSH.
 
-## Features
+Reference docs:
 
-- **Interactive TUI:** fuzzy-search instance picker
-- **exec:** Execute commands with standard io support
-- **Workflow engine:** Multi-step YAML automation with fleet targeting, parallel steps, SSM documents, and sub-workflow composition
-- **Bookmarking:** Save aliases instances you connect
-- **interactive setup:** Detect missing credentials, region, and Session Manager plugin; offers to install
-- **SSH config generation:** Easily Configure SSH over SSM
-- **Pipe-friendly:** `ssmx -l --format json` and non-TTY output work cleanly in scripts
-- **Port forwarding:** Intuitive port forwarding
-- **Health diagnostics:** Run pre-flight checks to diagnose SSM connectivity
-- **File copy:** Copy files between, to or from instances over SSM without open ports (separate `ssmcp` binary)
+- [CLI reference](/Users/mfundo/me/ssmx/docs/cli-reference.md)
+- [Workflow schema reference](/Users/mfundo/me/ssmx/docs/workflow-schema-reference.md)
+- [IAM permissions](/Users/mfundo/me/ssmx/docs/iam-permissions.md)
+
+## Why ssmx
+
+AWS SSM is powerful, but the default experience is fragmented. Starting sessions, picking the right target, debugging access failures, wiring up SSH-over-SSM, and running repeatable operations across many instances usually takes more glue than it should.
+
+`ssmx` pulls those workflows into one CLI.
+
+Use it when you want to:
+
+- connect to EC2 instances without bastions or open ports
+- run one-shot commands with live output and real exit codes
+- port-forward through an instance to local or remote services
+- copy files over SSM with `ssmcp`
+- use `ssh`, `scp`, `rsync`, and VS Code Remote over SSM
+- automate multi-step operational workflows in YAML
+
+It is also designed to be agent-friendly: the core actions are exposed as stable, composable CLI primitives that are easy for automation agents to discover, invoke, and combine.
+
+## What it does
+
+- **Interactive picker:** fuzzy-search instances in your current AWS account and region
+- **Smart target resolution:** bookmark alias, exact name, prefix name, or instance ID
+- **Exec with stdio:** stream output live, pass stdin through, propagate exit codes
+- **Port forwarding:** forward to the instance itself or to a host reachable through it
+- **Health checks:** explain why SSM access is failing before you waste time guessing
+- **SSH proxying:** generate SSH config and use standard SSH tooling over SSM
+- **Workflow engine:** YAML automation with inputs, dependencies, conditionals, parallel steps, sub-workflows, and fleet targeting
+- **File transfer:** upload and download files over SSM with the separate `ssmcp` binary
+- **Interactive setup:** detect missing region or Session Manager plugin and offer to fix them; surface clear next steps for missing credentials
 
 ## Installation
 
-**Using curl**
+### Using curl
+
 ```bash
 curl -sSL https://github.com/fractalops/ssmx/releases/latest/download/install.sh | bash
 ```
 
-**From source**
+### From source
+
 ```bash
 git clone https://github.com/fractalops/ssmx.git
 cd ssmx
@@ -38,23 +63,27 @@ sudo make install-system
 
 ### Prerequisites
 
-- AWS credentials configured (`aws configure` or environment variables)
-- [AWS Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html): ssmx will offer to install it on first run
+- AWS credentials configured with `aws configure` or environment variables
+- [AWS Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)
 
-## Usage
+If the plugin is missing, `ssmx` will offer to install it on first run.
 
-```
+## Quick start
+
+These are the commands most users care about first:
+
+```bash
 ssmx -i                              # fuzzy-search picker across all instances
 ssmx web-prod                        # connect by name tag, bookmark, or instance ID
 ssmx web-prod -- df -h               # run a one-shot command; exit code propagates
-ssmx web-prod -- df -h --timeout 30s # kill remote command after 30 s
+ssmx web-prod -- df -h --timeout 30s # kill remote command after 30s
 
 ssmx -l                              # list all instances + SSM reachability
 ssmx -l --tag env=prod               # filter by EC2 tag (key=value)
 ssmx -l --unhealthy                  # show only instances SSM can't reach
 ssmx -l --format json                # machine-readable output for scripts
 
-ssmx web-prod -L 8080                # forward local :8080 → instance :8080
+ssmx web-prod -L 8080                # forward local :8080 -> instance :8080
 ssmx web-prod -L 8080:localhost:8080 # same, explicit form
 ssmx web-prod -L 5432:db.internal:5432  # tunnel through instance to a remote host
 
@@ -66,102 +95,189 @@ ssmx --run deploy --tag env=prod     # run a workflow across a fleet of instance
 ssmx --configure                     # manage bookmarks, profile, region, SSH config
 ```
 
-### Target resolution
+## When to use ssmx vs the AWS CLI
 
-Anywhere a target is accepted, ssmx resolves it in this order:
+Use the AWS CLI when you want low-level AWS primitives.
 
-1. Bookmark alias (from `~/.ssmx/config.yaml`)
-2. Name tag: exact match
-3. Name tag: prefix match
+Use `ssmx` when you want the operator or agent workflow on top:
+
+- better target selection
+- interactive session UX
+- built-in diagnostics
+- SSH tool integration
+- reusable workflows over SSM
+- composable commands with predictable inputs and outputs
+- explicit human and machine-readable command surfaces
+
+## Common tasks
+
+### Connect to an instance
+
+```bash
+ssmx web-prod
+ssmx i-0123456789abcdef0
+ssmx -i
+```
+
+### Run a one-shot command
+
+```bash
+ssmx web-prod -- "journalctl -u app --since '5 min ago'"
+ssmx web-prod -- "sleep 30" --timeout 10s
+cat deploy.sql | ssmx db-prod -- psql -U app mydb
+```
+
+Remote exit codes propagate back to your shell, so `ssmx` behaves cleanly in scripts.
+
+### List and filter instances
+
+```bash
+ssmx -l
+ssmx -l --tag env=prod
+ssmx -l --unhealthy
+ssmx -l --format json
+```
+
+### Forward a port
+
+```bash
+ssmx web-prod -L 8080
+ssmx web-prod -L 8080:localhost:8080
+ssmx web-prod -L 5432:db.internal:5432
+```
+
+### Diagnose why access is broken
+
+```bash
+ssmx web-prod --health
+```
+
+This checks common failure points including target resolution, SSM reachability, and IAM-related access issues.
+
+### Copy files over SSM
+
+```bash
+ssmcp ./deploy.sh web-prod:/tmp/
+ssmcp web-prod:/var/log/app.log ./
+ssmcp -r ./dist/ web-prod:/srv/app/
+ssmcp -r web-prod:/etc/nginx/ ./nginx-backup/
+ssmcp --profile staging --region us-west-2 ./script.sh web-staging:/tmp/
+```
+
+`ssmcp` uses the same target resolution as `ssmx` and tunnels `sftp` over an SSM-backed SSH session.
+
+It currently depends on SSH-over-SSM rather than a native SSM file transfer protocol, so target instances need:
+
+- SSM connectivity
+- SSH available on the instance
+- EC2 Instance Connect support
+
+### Use SSH tools over SSM
+
+```bash
+ssmx --configure
+```
+
+Choose `Generate SSH config`, then add this to `~/.ssh/config`:
+
+```sshconfig
+Include ~/.ssh/config.d/ssmx
+```
+
+After that, standard SSH tools can use SSM transport:
+
+```bash
+ssh web-prod
+scp app.tar.gz web-prod:/tmp/
+rsync -av ./dist/ web-prod:/srv/app/
+```
+
+## Target resolution
+
+Anywhere a target is accepted, `ssmx` resolves it in this order:
+
+1. Bookmark alias from `~/.ssmx/config.yaml`
+2. Name tag exact match
+3. Name tag prefix match
 4. Instance ID (`i-*`)
 
 Ambiguous matches open an interactive disambiguation picker.
 
-### Exec
-
-```bash
-# Run a command and get output back: streams live, no buffering
-ssmx web-prod -- "journalctl -u app --since '5 min ago'"
-
-# Pipe stdin through to the remote process
-cat deploy.sql | ssmx db-prod -- psql -U app mydb
-
-# Kill after 10 seconds if still running
-ssmx web-prod -- "sleep 30" --timeout 10s
-```
-
-Exit codes from the remote command propagate as ssmx's own exit code.
-
-### Instance list
+## Example list output
 
 ```bash
 ssmx -l
 ```
 
-```
+```text
   NAME                           INSTANCE ID            STATE     SSM    PRIVATE IP       AGENT
   web-prod                       i-0abc123def456        running   ● online  10.0.1.10     3.2.0.0
   web-staging                    i-0def456abc789        running   ● online  10.0.1.20     3.2.0.0
   worker-prod                    i-0ghi789def012        running   ✕ offline 10.0.2.10
 ```
 
-### File copy (ssmcp)
-
-```bash
-# Upload a file to a remote instance
-ssmcp ./deploy.sh web-prod:/tmp/
-
-# Download a log file
-ssmcp web-prod:/var/log/app.log ./
-
-# Copy a directory recursively
-ssmcp -r ./dist/ web-prod:/srv/app/
-
-# Download config recursively from a remote path
-ssmcp -r web-prod:/etc/nginx/ ./nginx-backup/
-
-# Use a specific AWS profile and region
-ssmcp --profile staging --region us-west-2 ./script.sh web-staging:/tmp/
-```
-
-`ssmcp` uses the same target resolution as `ssmx` (bookmark → Name tag → instance ID) and requires no open ports: it tunnels `sftp` over the SSM SSH session.
-
-### SSH ProxyCommand integration
-
-```bash
-ssmx --configure   # select "Generate SSH config"
-```
-
-Writes entries to `~/.ssh/config.d/ssmx` so you can `ssh web-prod` directly through SSM: no bastion, no open ports. Add `Include ~/.ssh/config.d/ssmx` to your `~/.ssh/config` to activate.
-
 ## Local state
 
-```
+```text
 ~/.ssmx/
  ├── config.yaml  # profiles, aliases/bookmarks, default region
  ├── ssh_key      # ssh keys
- ├── ssh_key.pub 
+ ├── ssh_key.pub
  └── state.db     # sqlite: instance cache
 ```
 
+## Agent Skills
+
+This repo includes local skills for agent-assisted use:
+
+- [`.agents/skills/`](/Users/mfundo/me/ssmx/.agents/skills) for Codex-style discovery
+- [`.claude/skills/`](/Users/mfundo/me/ssmx/.claude/skills) for Claude-style discovery
+
+Current repo-local skills:
+
+- `ssmx-cli` for command construction, mode selection, and CLI syntax
+- `ssmx-workflows` for workflow authoring, composition, and execution guidance
+
+The skill contents are currently duplicated in both locations for cross-agent compatibility.
+
 ## Workflow Engine
 
-Run multi-step automation workflows on instances over SSM — no agent, no open ports.
+The workflow engine is `ssmx`'s operator-side orchestration layer. It sits above the lower-level AWS SSM execution primitives and complements SSM documents rather than replacing them.
+
+Use SSM documents when you want AWS-managed runbooks and deeper native integration with the wider SSM automation ecosystem.
+
+Use `ssmx` workflows when you want a fast CLI-driven layer for composing shell steps, selected SSM documents, sub-workflows, and fleet targeting in one place.
+
+Use workflows when you want to:
+
+- run the same operational sequence safely every time
+- target one instance or an entire fleet
+- express dependencies and conditionals in YAML
+- mix shell commands, SSM documents, and sub-workflows
+- capture outputs for downstream steps
+- give an automation agent a lightweight way to plan and execute multi-step ops tasks
+
+In practice, that makes `ssmx` workflows feel closer to lightweight operator orchestration for both humans and agents, while SSM documents remain the AWS-native execution primitive underneath.
 
 ### Running workflows
 
 ```bash
-ssmx web-prod --run deploy               # run workflow on a named instance
-ssmx --run deploy --tag env=prod         # fleet mode: run on all tagged instances
-ssmx --run deploy --tag env=prod --concurrency 5  # limit to 5 concurrent instances
-ssmx web-prod --run deploy --input version=2.1.0  # pass inputs at runtime
-ssmx web-prod --run deploy --dry-run     # print steps without executing
-ssmx web-prod --run deploy --timeout 10m # hard wall-clock timeout
+ssmx web-prod --run deploy                         # run workflow on a named instance
+ssmx --run deploy --tag env=prod                   # fleet mode: run on all tagged instances
+ssmx --run deploy --tag env=prod --concurrency 5   # limit to 5 concurrent instances
+ssmx web-prod --run deploy --param version=2.1.0   # pass inputs at runtime
+ssmx web-prod --run deploy --dry-run               # print steps without executing
+ssmx web-prod --run deploy --dry-run --format json # machine-readable plan
+ssmx web-prod --run deploy --format json           # machine-readable run summary
+ssmx web-prod --run deploy --timeout 10m           # hard wall-clock timeout
+cat deploy.yaml | ssmx web-prod --run -            # load a workflow from stdin
+ssmx web-prod --run-file /path/to/deploy.yaml      # load a workflow from an explicit file path
+ssmx --run-file /path/to/deploy.yaml --tag env=prod # --run-file works in fleet mode too
 ```
 
 ### Workflow files
 
-Place YAML workflow files in `.ssmx/workflows/` relative to where you run `ssmx`, or in `~/.ssmx/workflows/` for global workflows.
+Place YAML workflow files in the project root's `.ssmx/workflows/` directory, or in `~/.ssmx/workflows/` for global workflows.
 
 ```yaml
 name: deploy
@@ -187,9 +303,11 @@ outputs:
   status: "${{ steps.start-app.stdout }}"
 ```
 
+For the full schema, validation rules, execution model, and expression reference, see [docs/workflow-schema-reference.md](/Users/mfundo/me/ssmx/docs/workflow-schema-reference.md).
+
 ### Step kinds
 
-**`shell:`** — run a shell script on the instance
+**`shell:`** runs a shell script on the instance.
 
 ```yaml
 steps:
@@ -204,7 +322,7 @@ steps:
       uptime: "${{ stdout }}"
 ```
 
-**`ssm-doc:`** — run an arbitrary SSM document
+**`ssm-doc:`** runs an arbitrary SSM document.
 
 ```yaml
 steps:
@@ -217,13 +335,15 @@ steps:
       summary: "${{ stdout }}"
 
   install-agent:
-    ssm-doc: install          # expands via doc_aliases in ~/.ssmx/config.yaml
+    ssm-doc: install
     params:
       action: install
       name: AmazonCloudWatchAgent
 ```
 
-**`workflow:`** — call another workflow as a sub-step
+`install` expands via `doc_aliases` in `~/.ssmx/config.yaml`.
+
+**`workflow:`** calls another workflow as a sub-step.
 
 ```yaml
 steps:
@@ -236,7 +356,7 @@ steps:
     needs: [bootstrap]
 ```
 
-**`parallel:`** — run sub-steps concurrently (all run regardless of sibling failure)
+**`parallel:`** runs sub-steps concurrently.
 
 ```yaml
 steps:
@@ -253,17 +373,19 @@ steps:
           name: AmazonCloudWatchAgent
 ```
 
+All sub-steps run regardless of sibling failure.
+
 ### Step options
 
 | Field | Description |
 |---|---|
 | `needs:` | List of step names that must complete first |
-| `if:` | Expression — skip step if falsy (`${{ inputs.flag }}`) |
-| `always:` | Run even if a dependency failed (useful for cleanup) |
-| `timeout:` | Per-step timeout (e.g. `30s`, `5m`) |
-| `env:` | Environment variables (expressions supported) |
+| `if:` | Expression, skip step if falsy (`${{ inputs.flag }}`) |
+| `always:` | Run even if a dependency failed, useful for cleanup |
+| `timeout:` | Per-step timeout such as `30s` or `5m` |
+| `env:` | Environment variables, expressions supported |
 | `outputs:` | Capture step results for downstream steps |
-| `on-failure:` | Call a cleanup workflow if this step fails (`workflow: steps` only) |
+| `on-failure:` | Call a cleanup workflow if this step fails (`workflow:` steps only) |
 
 ### Fleet targeting
 
@@ -275,7 +397,7 @@ targets:
   tags:
     env: prod
     role: web
-  max-concurrency: 3   # 0 = unlimited
+  max-concurrency: 3
 
 # By explicit instance IDs
 targets:
@@ -284,6 +406,8 @@ targets:
     - i-0xyz789abc012
   max-concurrency: 2
 ```
+
+`0` means unlimited concurrency.
 
 ### Expressions
 
@@ -298,8 +422,8 @@ Steps support `${{ }}` expressions:
 | `${{ steps.NAME.outputs.KEY }}` | Named output of a previous step |
 | `${{ target.instance_id }}` | Current instance ID |
 | `${{ env.VAR }}` | Workflow-level env variable |
-| `${{ stdout }}` | Current step stdout (in `outputs:` block only) |
-| `${{ exitCode }}` | Current step exit code (in `outputs:` block only) |
+| `${{ stdout }}` | Current step stdout, in `outputs:` only |
+| `${{ exitCode }}` | Current step exit code, in `outputs:` only |
 
 ### Doc aliases
 
@@ -317,9 +441,9 @@ doc_aliases:
 Pull requests are welcome. For significant changes, open an issue first to discuss what you'd like to change.
 
 ```bash
-make test      # run tests
-make lint      # run linter
-make build     # build binary
+make test
+make lint
+make build
 ```
 
 ## License

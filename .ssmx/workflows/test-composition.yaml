@@ -1,0 +1,54 @@
+name: test-composition
+description: >
+  Engine test: workflow: step kind, with: input passing, and output
+  propagation from child to parent. Invokes lib-preflight as a child
+  workflow and consumes its outputs in a downstream step.
+
+  Covers:
+    - workflow: step invocation
+    - with: input mapping
+    - child workflow outputs accessible as steps.NAME.outputs.KEY
+    - multiple workflow: steps in sequence
+
+  Usage:
+    ssmx web-prod --run test-composition
+    ssmx web-prod --run test-composition --param min_disk_gb=1
+version: "1.0.0"
+
+inputs:
+  min_disk_gb:
+    type: int
+    default: 1
+    description: "Forwarded to lib-preflight as min_disk_gb"
+  require_commands:
+    type: string
+    default: "sh echo"
+    description: "Forwarded to lib-preflight as require_commands"
+
+steps:
+  preflight:
+    workflow: lib-preflight
+    with:
+      min_disk_gb: "${{ inputs.min_disk_gb }}"
+      require_commands: "${{ inputs.require_commands }}"
+
+  consume-outputs:
+    shell: |
+      echo "preflight disk_free output: ${{ steps.preflight.outputs.disk_free }}"
+      echo "preflight load output:      ${{ steps.preflight.outputs.load }}"
+    needs: [preflight]
+
+  diagnostics:
+    workflow: lib-diagnostics
+    needs: [consume-outputs]
+
+  report:
+    shell: |
+      echo "diagnostics summary: ${{ steps.diagnostics.outputs.summary }}"
+      echo "composition test complete"
+    needs: [diagnostics]
+
+outputs:
+  disk_free: "${{ steps.preflight.outputs.disk_free }}"
+  load: "${{ steps.preflight.outputs.load }}"
+  diagnostics_summary: "${{ steps.diagnostics.outputs.summary }}"

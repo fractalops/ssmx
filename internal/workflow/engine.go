@@ -17,6 +17,8 @@ import (
 type Engine struct {
 	cfg        aws.Config
 	instanceID string
+	name       string // EC2 Name tag — exposed as ${{ target.name }}
+	privateIP  string // private IP — exposed as ${{ target.private_ip }}
 	region     string
 	profile    string
 	runner     shellRunner                     // injectable for tests; set by New
@@ -63,10 +65,12 @@ func isTerminalWriter(w io.Writer) bool {
 }
 
 // New creates an Engine targeting instanceID.
-func New(cfg aws.Config, instanceID, region, profile string, docAliases map[string]string) *Engine {
+func New(cfg aws.Config, instanceID, name, privateIP, region, profile string, docAliases map[string]string) *Engine {
 	return &Engine{
 		cfg:        cfg,
 		instanceID: instanceID,
+		name:       name,
+		privateIP:  privateIP,
 		region:     region,
 		profile:    profile,
 		runner:     &awsShellRunner{cfg: cfg},
@@ -86,6 +90,8 @@ func (e *Engine) newChild(workflowName string) *Engine {
 	return &Engine{
 		cfg:        e.cfg,
 		instanceID: e.instanceID,
+		name:       e.name,
+		privateIP:  e.privateIP,
 		region:     e.region,
 		profile:    e.profile,
 		runner:     e.runner,
@@ -116,7 +122,7 @@ func (e *Engine) Run(ctx context.Context, wf *Workflow, opts RunOptions) (map[st
 		Secrets: map[string]string{},
 		Env:     wf.Env,
 		Steps:   map[string]*StepResult{},
-		Target:  TargetInfo{InstanceID: e.instanceID},
+		Target:  TargetInfo{InstanceID: e.instanceID, Name: e.name, PrivateIP: e.privateIP},
 	}
 	if exprCtx.Env == nil {
 		exprCtx.Env = map[string]string{}

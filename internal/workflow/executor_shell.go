@@ -54,7 +54,11 @@ func runShellStep(ctx context.Context, runner shellRunner, instanceID string, st
 	// Resolve env: workflow-level env is the base; step-level overrides.
 	resolvedEnv := make(map[string]string, len(exprCtx.Env)+len(step.Env))
 	for k, v := range exprCtx.Env {
-		resolvedEnv[k] = v
+		rv, err := Resolve(v, exprCtx)
+		if err != nil {
+			return nil, fmt.Errorf("resolving workflow env %s: %w", k, err)
+		}
+		resolvedEnv[k] = rv
 	}
 	for k, v := range step.Env {
 		rv, err := Resolve(v, exprCtx)

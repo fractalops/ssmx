@@ -1,0 +1,95 @@
+name: test-dag
+description: >
+  Engine test: full DAG execution model. Covers fan-out (a single step
+  depended on by multiple), fan-in (a step needing multiple predecessors),
+  conditional skip via if:, always: true on the failure path, per-step
+  timeout, and output chaining through multiple levels.
+
+  Expected execution order:
+    Level 1: start
+    Level 2: branch-a, branch-b  (fan-out, concurrent)
+    Level 3: join                 (fan-in, waits for both)
+    Level 4: conditional-skip     (skipped — if: evaluates false)
+    Level 4: conditional-run      (runs — if: evaluates true)
+    Level 5: finish               (depends on join; conditional-* not in its needs)
+    Level *: cleanup              (always: true, depends on finish)
+
+  Usage:
+    ssmx web-prod --run test-dag
+    ssmx web-prod --run test-dag --dry-run --format json
+version: "1.0.0"
+
+inputs:
+  enable_skip:
+    type: bool
+    default: true
+    description: "When true (default), conditional-skip is skipped (if: checks == false)"
+
+steps:
+  start:
+    shell: |
+      echo "start: running"
+      echo "start-token"
+    outputs:
+      token: "${{ stdout }}"
+
+  branch-a:
+    shell: |
+      echo "branch-a: running (token from start: ${{ steps.start.outputs.token }})"
+      echo "branch-a-result"
+    needs: [start]
+    outputs:
+      result: "${{ stdout }}"
+
+  branch-b:
+    shell: |
+      echo "branch-b: running"
+      echo "branch-b-result"
+    needs: [start]
+    outputs:
+      result: "${{ stdout }}"
+
+  join:
+    shell: |
+      echo "join: branch-a said: ${{ steps.branch-a.outputs.result }}"
+      echo "join: branch-b said: ${{ steps.branch-b.outputs.result }}"
+      echo "join-complete"
+    needs: [branch-a, branch-b]
+    outputs:
+      status: "${{ stdout }}"
+
+  conditional-skip:
+    shell: |
+      echo "conditional-skip: this should NOT run when enable_skip=true"
+    needs: [join]
+    if: "${{ inputs.enable_skip }} == false"
+
+  conditional-run:
+    shell: |
+      echo "conditional-run: this SHOULD always run (no if guard)"
+    needs: [join]
+
+  timed-step:
+    shell: |
+      echo "timed-step: started"
+      sleep 1
+      echo "timed-step: done within timeout"
+    needs: [join]
+    timeout: 30s
+
+  finish:
+    shell: |
+      echo "finish: join status was: ${{ steps.join.outputs.status }}"
+      echo "finish: all done"
+    needs: [join, conditional-run, timed-step]
+    outputs:
+      final: "${{ stdout }}"
+
+  cleanup:
+    shell: |
+      echo "cleanup: always runs (success or failure path)"
+    needs: [finish]
+    always: true
+
+outputs:
+  final: "${{ steps.finish.outputs.final }}"

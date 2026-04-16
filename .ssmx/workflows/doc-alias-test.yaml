@@ -1,0 +1,13 @@
+name: doc-alias-test
+description: "E2E test for doc_aliases: expansion — run-script alias maps to AWS-RunShellScript"
+version: "1.0.0"
+steps:
+  via-alias:
+    ssm-doc: run-script
+    params:
+      commands: echo "doc alias resolved ok on $(hostname)"
+    outputs:
+      result: "${{ stdout }}"
+  confirm:
+    shell: 'echo "alias output was -> ${{ steps.via-alias.outputs.result }}"'
+    needs: [via-alias]

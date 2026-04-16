@@ -1,0 +1,24 @@
+name: install-docker
+description: Install Docker on Amazon Linux 2 and verify it is running
+
+steps:
+  install:
+    shell: |
+      amazon-linux-extras enable docker
+      yum install -y docker
+    outputs:
+      result: "${{ stdout }}"
+
+  start:
+    shell: |
+      systemctl enable docker
+      systemctl start docker
+    needs: [install]
+
+  verify:
+    shell: |
+      systemctl is-active docker
+      docker info --format '{{.ServerVersion}}'
+    needs: [start]
+    outputs:
+      docker_version: "${{ stdout }}"
