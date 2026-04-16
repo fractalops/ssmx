@@ -121,6 +121,21 @@ func (wf *Workflow) Validate() error {
 
 		if step.Parallel != nil {
 			for subName, subStep := range step.Parallel {
+				// Reject nested parallel.
+				if subStep.Parallel != nil {
+					return fmt.Errorf("parallel sub-step %q in %q: nested parallel is not supported", subName, name)
+				}
+				// Reject dependency and conditional fields (meaningless inside parallel).
+				if len(subStep.Needs) > 0 {
+					return fmt.Errorf("parallel sub-step %q in %q: needs: is not supported inside parallel", subName, name)
+				}
+				if subStep.If != "" {
+					return fmt.Errorf("parallel sub-step %q in %q: if: is not supported inside parallel", subName, name)
+				}
+				if subStep.Always {
+					return fmt.Errorf("parallel sub-step %q in %q: always: is not supported inside parallel", subName, name)
+				}
+				// Validate kind — exactly one of shell/ssm-doc/workflow.
 				subKinds := 0
 				if subStep.Shell != "" {
 					subKinds++

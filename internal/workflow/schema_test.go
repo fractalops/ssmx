@@ -233,3 +233,71 @@ func TestValidate_OnFailureEmptyWorkflow_Error(t *testing.T) {
 		t.Error("expected error for on-failure with empty workflow name")
 	}
 }
+
+func TestValidate_ParallelSubStep_NestedParallelRejected(t *testing.T) {
+	wf := &Workflow{
+		Name: "w",
+		Steps: map[string]*Step{
+			"outer": {
+				Parallel: map[string]*Step{
+					"inner": {
+						Parallel: map[string]*Step{
+							"deep": {Shell: "echo deep"},
+						},
+					},
+				},
+			},
+		},
+	}
+	if err := wf.Validate(); err == nil {
+		t.Error("expected error for nested parallel")
+	}
+}
+
+func TestValidate_ParallelSubStep_NeedsRejected(t *testing.T) {
+	wf := &Workflow{
+		Name: "w",
+		Steps: map[string]*Step{
+			"fetch": {
+				Parallel: map[string]*Step{
+					"a": {Shell: "echo a", Needs: []string{"b"}},
+				},
+			},
+		},
+	}
+	if err := wf.Validate(); err == nil {
+		t.Error("expected error for parallel sub-step with needs:")
+	}
+}
+
+func TestValidate_ParallelSubStep_IfRejected(t *testing.T) {
+	wf := &Workflow{
+		Name: "w",
+		Steps: map[string]*Step{
+			"fetch": {
+				Parallel: map[string]*Step{
+					"a": {Shell: "echo a", If: "${{ inputs.flag }}"},
+				},
+			},
+		},
+	}
+	if err := wf.Validate(); err == nil {
+		t.Error("expected error for parallel sub-step with if:")
+	}
+}
+
+func TestValidate_ParallelSubStep_AlwaysRejected(t *testing.T) {
+	wf := &Workflow{
+		Name: "w",
+		Steps: map[string]*Step{
+			"fetch": {
+				Parallel: map[string]*Step{
+					"a": {Shell: "echo a", Always: true},
+				},
+			},
+		},
+	}
+	if err := wf.Validate(); err == nil {
+		t.Error("expected error for parallel sub-step with always:")
+	}
+}
