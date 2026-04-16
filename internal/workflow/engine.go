@@ -325,6 +325,18 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 			fmt.Fprintf(w, "  %s  %s  failed\n", ansi(isTTY, ansiRed, "✗"), name)
 		}
 		return result, false, nil
+	case "ssm-doc":
+		stopSpinner()
+		result, err := runSSMDocStep(ctx, e, step, name, exprCtx, progress)
+		if err != nil {
+			return nil, false, err
+		}
+		if result.Success {
+			fmt.Fprintf(w, "  %s  %s\n", ansi(isTTY, ansiGreen, "✓"), name)
+		} else {
+			fmt.Fprintf(w, "  %s  %s  exit code %d\n", ansi(isTTY, ansiRed, "✗"), name, result.ExitCode)
+		}
+		return result, false, nil
 	default:
 		return nil, false, fmt.Errorf("step %q: kind %q is not supported in this version", name, step.Kind())
 	}
