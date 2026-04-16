@@ -13,11 +13,12 @@ import (
 // ConfigErrorKind classifies why AWS credential/config loading failed.
 type ConfigErrorKind int
 
+// ConfigErrorKind values classify why AWS credential/config loading failed.
 const (
-	ConfigErrNoCredentials  ConfigErrorKind = iota // no credentials configured at all
-	ConfigErrProfileNotFound                       // --profile name not in ~/.aws/config
-	ConfigErrSSOExpired                            // SSO profile exists but session is expired
-	ConfigErrGeneric                               // any other AWS config/auth error
+	ConfigErrNoCredentials   ConfigErrorKind = iota // no credentials configured at all
+	ConfigErrProfileNotFound                        // --profile name not in ~/.aws/config
+	ConfigErrSSOExpired                             // SSO profile exists but session is expired
+	ConfigErrGeneric                                // any other AWS config/auth error
 )
 
 // ConfigError is returned by NewConfig when credentials or configuration are

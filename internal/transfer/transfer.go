@@ -48,7 +48,7 @@ type proxyConn struct {
 }
 
 func (p *proxyConn) Read(b []byte) (int, error)  { return p.stdout.Read(b) } //nolint:wrapcheck // net.Conn interface forwarder — must return error as-is
-func (p *proxyConn) Write(b []byte) (int, error) { return p.stdin.Write(b) } //nolint:wrapcheck // net.Conn interface forwarder — must return error as-is
+func (p *proxyConn) Write(b []byte) (int, error) { return p.stdin.Write(b) }
 
 func (p *proxyConn) Close() error {
 	_ = p.stdin.Close()

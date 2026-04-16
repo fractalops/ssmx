@@ -23,7 +23,7 @@ func init() {
 }
 
 func runList(cmd *cobra.Command) error {
-	if err := validateFormat("table", "json", "tsv"); err != nil {
+	if err := validateFormat("table", formatJSON, "tsv"); err != nil {
 		return err
 	}
 
@@ -108,7 +108,7 @@ func runList(cmd *cobra.Command) error {
 
 func printInstances(instances []awsclient.Instance, format string) error {
 	switch format {
-	case "json":
+	case formatJSON:
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(instances)

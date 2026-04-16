@@ -129,7 +129,7 @@ func newProgressWriter(w io.Writer, name string) *progressWriter {
 func (pw *progressWriter) Write(b []byte) (int, error) {
 	n, err := pw.Writer.Write(b)
 	pw.pt.tick(n)
-	return n, err //nolint:wrapcheck // io.Writer interface forwarder
+	return n, err
 }
 
 func (pw *progressWriter) Done() { pw.pt.Done() }

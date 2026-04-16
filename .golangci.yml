@@ -33,6 +33,14 @@ linters:
       # and is the idiomatic pattern for this API.
       - linters: [gosec]
         text: "G115"
+      # awsShellRunner methods are thin adapters implementing an internal
+      # interface; adding a wrap would provide no useful context.
+      - linters: [wrapcheck]
+        path: "internal/workflow/executor_shell\\.go"
+      # io.Writer.Write delegations in mutex/locked writers — wrapping a Write
+      # error makes no semantic sense for these adapter types.
+      - linters: [wrapcheck]
+        text: "error returned from interface method.*io\\.Writer"
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

@@ -27,6 +27,8 @@ var (
 	flagFormat      string
 )
 
+const formatJSON = "json"
+
 // Workflow flags.
 var (
 	flagRun              string
@@ -71,8 +73,8 @@ type rootArgs struct {
 // dashAt is the index into args where -- appeared (-1 if absent), as returned
 // by cobra's ArgsLenAtDash().
 func parseRootArgs(interactive, list, configure, proxy, hasForwards, health bool, args []string, dashAt int,
-	run, runFile string, workflows bool, params []string, workflowInfo, workflowInfoFile string, dryRun bool,
-	tags []string, concurrency int,
+	run, runFile string, workflows bool, _ []string, workflowInfo, workflowInfoFile string, _ bool,
+	tags []string, _ int,
 ) rootArgs {
 	if workflows {
 		return rootArgs{action: actionWorkflows}

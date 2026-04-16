@@ -46,7 +46,7 @@ func Run(ctx context.Context, profile, region string) error {
 		if errors.As(err, &cfgErr) {
 			return errors.New(formatConfigError(cfgErr))
 		}
-		return err
+		return fmt.Errorf("loading AWS config: %w", err)
 	}
 
 	// 2. Region — resolved from flag, ~/.aws/config, AWS_DEFAULT_REGION, or ~/.ssmx/config.yaml.

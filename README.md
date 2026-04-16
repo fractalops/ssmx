@@ -9,12 +9,6 @@
 
 It makes SSM practical for day-to-day infrastructure work: connect to instances, run commands, forward ports, copy files, diagnose broken access, and automate multi-step workflows across fleets without opening inbound SSH.
 
-Reference docs:
-
-- [CLI reference](/Users/mfundo/me/ssmx/docs/cli-reference.md)
-- [Workflow schema reference](/Users/mfundo/me/ssmx/docs/workflow-schema-reference.md)
-- [IAM permissions](/Users/mfundo/me/ssmx/docs/iam-permissions.md)
-
 ## Why ssmx
 
 AWS SSM is powerful, but the default experience is fragmented. Starting sessions, picking the right target, debugging access failures, wiring up SSH-over-SSM, and running repeatable operations across many instances usually takes more glue than it should.
@@ -68,6 +62,8 @@ sudo make install-system
 
 If the plugin is missing, `ssmx` will offer to install it on first run.
 
+For a minimal IAM policy and required permissions, see [docs/iam-permissions.md](/Users/mfundo/me/ssmx/docs/iam-permissions.md).
+
 ## Quick start
 
 These are the commands most users care about first:
@@ -94,6 +90,8 @@ ssmx --run deploy --tag env=prod     # run a workflow across a fleet of instance
 
 ssmx --configure                     # manage bookmarks, profile, region, SSH config
 ```
+
+For the full command surface, output modes, and flag behavior, see [docs/cli-reference.md](/Users/mfundo/me/ssmx/docs/cli-reference.md).
 
 ## When to use ssmx vs the AWS CLI
 

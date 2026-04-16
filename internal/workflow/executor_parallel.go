@@ -13,7 +13,7 @@ import (
 // Sub-steps share a lockedWriter so their output lines do not interleave;
 // each sub-step's output is prefixed with its name.
 // Returns an error if any sub-step failed; all sub-steps always complete first.
-func runParallelStep(ctx context.Context, e *Engine, step *Step, name string, exprCtx ExprContext, opts RunOptions, w io.Writer, isTTY bool) (*StepResult, error) {
+func runParallelStep(ctx context.Context, e *Engine, step *Step, _ string, exprCtx ExprContext, opts RunOptions, w io.Writer, isTTY bool) (*StepResult, error) {
 	lw := &lockedWriter{w: w}
 
 	// Stable sub-step order so output is deterministic across runs.

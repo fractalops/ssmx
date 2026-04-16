@@ -127,8 +127,8 @@ func runWorkflowInfoFromFile(path string) error {
 //  2. workflow targets: block
 //
 // A positional instance arg always routes to runWorkflow instead (single-instance).
-func runWorkflowFleet(cmd *cobra.Command) error {
-	if err := validateFormat("table", "json"); err != nil {
+func runWorkflowFleet(_ *cobra.Command) error {
+	if err := validateFormat("table", formatJSON); err != nil {
 		return err
 	}
 
@@ -201,7 +201,7 @@ func runWorkflowFleet(cmd *cobra.Command) error {
 		params[parts[0]] = parts[1]
 	}
 
-	if flagDryRun && flagFormat == "json" {
+	if flagDryRun && flagFormat == formatJSON {
 		plan, err := buildDryRunPlan(wf, params)
 		if err != nil {
 			return err
@@ -224,14 +224,14 @@ func runWorkflowFleet(cmd *cobra.Command) error {
 		Inputs: params,
 		DryRun: flagDryRun,
 	}
-	if flagFormat == "json" {
+	if flagFormat == formatJSON {
 		// Suppress human-readable prefixed streaming so stdout contains only JSON.
 		runOpts.Stderr = io.Discard
 	}
 
 	fe := workflow.NewFleetEngineWithConfig(awsCfg, instances, concurrency, region, profile, cfg.DocAliases)
 	fleetSummary, err := fe.Run(ctx, wf, runOpts)
-	if flagFormat == "json" && fleetSummary != nil {
+	if flagFormat == formatJSON && fleetSummary != nil {
 		b, jsonErr := json.MarshalIndent(fleetSummary, "", "  ")
 		if jsonErr != nil {
 			return jsonErr
@@ -279,7 +279,7 @@ func resolveFleet(ctx context.Context, awsCfg aws.Config, tags []string, instanc
 }
 
 func runWorkflow(cmd *cobra.Command, target string) error {
-	if err := validateFormat("table", "json"); err != nil {
+	if err := validateFormat("table", formatJSON); err != nil {
 		return err
 	}
 
@@ -327,7 +327,7 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 		params[parts[0]] = parts[1]
 	}
 
-	if flagDryRun && flagFormat == "json" {
+	if flagDryRun && flagFormat == formatJSON {
 		plan, err := buildDryRunPlan(wf, params)
 		if err != nil {
 			return err
@@ -350,7 +350,7 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 		Inputs: params,
 		DryRun: flagDryRun,
 	}
-	if flagFormat == "json" {
+	if flagFormat == formatJSON {
 		// Suppress human-readable step output so stdout stays machine-readable.
 		// Failure details are preserved in RunSummary, not in the status stream.
 		runOpts.Stderr = io.Discard
@@ -359,7 +359,7 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 	engine := workflow.New(awsCfg, inst.InstanceID, inst.Name, inst.PrivateIP, region, profile, cfg.DocAliases)
 	var summary *workflow.RunSummary
 	_, summary, err = engine.Run(ctx, wf, runOpts)
-	if flagFormat == "json" && summary != nil {
+	if flagFormat == formatJSON && summary != nil {
 		out, jsonErr := formatRunSummaryJSON(summary)
 		if jsonErr != nil {
 			return jsonErr
