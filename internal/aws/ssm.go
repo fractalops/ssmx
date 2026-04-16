@@ -186,6 +186,28 @@ func SendShellCommand(ctx context.Context, cfg aws.Config, instanceID string, co
 	return aws.ToString(out.Command.CommandId), nil
 }
 
+// SendDocCommand sends an arbitrary SSM document command to a single instance.
+// params values are automatically wrapped in string arrays as required by the SSM API.
+// Returns the CommandId. Use WaitForShellCommand to poll for completion.
+func SendDocCommand(ctx context.Context, cfg aws.Config, instanceID, docName string, params map[string]string) (string, error) {
+	client := ssm.NewFromConfig(cfg)
+
+	ssmParams := make(map[string][]string, len(params))
+	for k, v := range params {
+		ssmParams[k] = []string{v}
+	}
+
+	out, err := client.SendCommand(ctx, &ssm.SendCommandInput{
+		InstanceIds:  []string{instanceID},
+		DocumentName: aws.String(docName),
+		Parameters:   ssmParams,
+	})
+	if err != nil {
+		return "", fmt.Errorf("SSM SendCommand (doc %s) on %s: %w", docName, instanceID, err)
+	}
+	return aws.ToString(out.Command.CommandId), nil
+}
+
 // WaitForShellCommand polls GetCommandInvocation until the command reaches
 // a terminal state. Returns stdout, stderr, and exit code.
 // On SSM-level errors (TimedOut, Cancelled) it returns a non-nil error.

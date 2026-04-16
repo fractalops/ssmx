@@ -82,6 +82,48 @@ func tagValue(tags []ec2types.Tag, key string) string {
 	return ""
 }
 
+// ListInstancesByIDs returns EC2 instances for the given instance IDs.
+// Returns the same Instance shape as ListInstances; SSMStatus defaults to "unknown".
+// Returns nil, nil when ids is empty.
+func ListInstancesByIDs(ctx context.Context, cfg aws.Config, ids []string) ([]Instance, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	client := ec2.NewFromConfig(cfg)
+	out, err := client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+		InstanceIds: ids,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("describing instances by ID: %w", err)
+	}
+	var instances []Instance
+	for _, reservation := range out.Reservations {
+		for _, i := range reservation.Instances {
+			inst := Instance{
+				InstanceID: aws.ToString(i.InstanceId),
+				State:      string(i.State.Name),
+				PrivateIP:  aws.ToString(i.PrivateIpAddress),
+				PublicIP:   aws.ToString(i.PublicIpAddress),
+				SubnetID:   aws.ToString(i.SubnetId),
+				VPCID:      aws.ToString(i.VpcId),
+				SSMStatus:  "unknown",
+			}
+			if i.Platform != "" {
+				inst.Platform = string(i.Platform)
+			}
+			if i.IamInstanceProfile != nil {
+				inst.IAMProfileARN = aws.ToString(i.IamInstanceProfile.Arn)
+			}
+			inst.Name = tagValue(i.Tags, "Name")
+			if i.Placement != nil {
+				inst.AvailabilityZone = aws.ToString(i.Placement.AvailabilityZone)
+			}
+			instances = append(instances, inst)
+		}
+	}
+	return instances, nil
+}
+
 func buildTagFilters(tagFilters []string) []ec2types.Filter {
 	filters := make([]ec2types.Filter, 0, len(tagFilters))
 	for _, tf := range tagFilters {
