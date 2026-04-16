@@ -35,12 +35,16 @@ func (e *ConfigError) Unwrap() error { return e.Err }
 func classifyCredentialError(err error, profile string) ConfigErrorKind {
 	msg := err.Error()
 	switch {
-	case strings.Contains(msg, "shared config profile") || strings.Contains(msg, "profile") && profile != "":
+	case strings.Contains(msg, "shared config profile") ||
+		(strings.Contains(msg, "failed to get shared config profile") && profile != "") ||
+		(strings.Contains(msg, "does not exist") && profile != ""):
 		return ConfigErrProfileNotFound
 	case strings.Contains(msg, "token has expired") ||
 		strings.Contains(msg, "SSO session not found") ||
 		strings.Contains(msg, "SSO token") ||
-		strings.Contains(msg, "not logged in"):
+		strings.Contains(msg, "not logged in") ||
+		strings.Contains(msg, "sso profile") ||
+		strings.Contains(msg, "refresh cached credentials"):
 		return ConfigErrSSOExpired
 	case strings.Contains(msg, "credentials") || strings.Contains(msg, "retrieve"):
 		return ConfigErrNoCredentials

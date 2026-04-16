@@ -16,6 +16,7 @@ func TestClassifyCredentialError(t *testing.T) {
 		{"profile not found", "failed to get shared config profile, myprofile", "myprofile", ConfigErrProfileNotFound},
 		{"sso expired", "token has expired", "sso-dev", ConfigErrSSOExpired},
 		{"sso not logged in", "SSO session not found", "sso-dev", ConfigErrSSOExpired},
+		{"sso with profile in msg", "failed to refresh cached credentials for sso profile dev", "dev", ConfigErrSSOExpired},
 		{"generic", "some other error", "", ConfigErrGeneric},
 	}
 	for _, tt := range tests {
