@@ -72,6 +72,45 @@ func TestFormatRunSummaryJSON(t *testing.T) {
 	}
 }
 
+// TestFormatRunSummaryJSON_FailureDetailInPayload verifies that failed step
+// stdout/stderr are preserved in the JSON summary. This matters because
+// --format json suppresses the human-readable status stream (io.Discard),
+// making the JSON payload the sole source of failure diagnostics.
+func TestFormatRunSummaryJSON_FailureDetailInPayload(t *testing.T) {
+	s := &workflow.RunSummary{
+		Workflow: "deploy",
+		Instance: "i-123",
+		Success:  false,
+		Error:    "step \"start\" failed (exit code 125)",
+		Steps: []workflow.StepSummary{
+			{
+				Name:    "start",
+				Success: false,
+				Exit:    125,
+				Stdout:  "container name already in use\n",
+				Stderr:  "docker: Error response from daemon: Conflict.\n",
+			},
+		},
+	}
+	out, err := formatRunSummaryJSON(s)
+	if err != nil {
+		t.Fatalf("formatRunSummaryJSON error: %v", err)
+	}
+	// Failure detail must survive in JSON even when no status stream is available.
+	if !strings.Contains(out, "container name already in use") {
+		t.Errorf("stdout missing from JSON payload:\n%s", out)
+	}
+	if !strings.Contains(out, "Conflict") {
+		t.Errorf("stderr missing from JSON payload:\n%s", out)
+	}
+	if !strings.Contains(out, `"exit_code": 125`) {
+		t.Errorf("exit code missing from JSON payload:\n%s", out)
+	}
+	if !strings.Contains(out, `"error":`) {
+		t.Errorf("top-level error field missing from JSON payload:\n%s", out)
+	}
+}
+
 func newCmdWithFormatFlag() *cobra.Command {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().StringVar(&flagFormat, "format", "table", "output format")

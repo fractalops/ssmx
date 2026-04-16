@@ -321,12 +321,19 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 		}
 	}
 
-	engine := workflow.New(awsCfg, inst.InstanceID, region, profile, cfg.DocAliases)
-	var summary *workflow.RunSummary
-	_, summary, err = engine.Run(ctx, wf, workflow.RunOptions{
+	runOpts := workflow.RunOptions{
 		Inputs: params,
 		DryRun: flagDryRun,
-	})
+	}
+	if flagFormat == "json" {
+		// Suppress human-readable step output so stdout stays machine-readable.
+		// Failure details are preserved in RunSummary, not in the status stream.
+		runOpts.Stderr = io.Discard
+	}
+
+	engine := workflow.New(awsCfg, inst.InstanceID, region, profile, cfg.DocAliases)
+	var summary *workflow.RunSummary
+	_, summary, err = engine.Run(ctx, wf, runOpts)
 	if flagFormat == "json" && summary != nil {
 		out, jsonErr := formatRunSummaryJSON(summary)
 		if jsonErr != nil {
