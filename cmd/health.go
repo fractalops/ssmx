@@ -44,7 +44,7 @@ type healthJSONResult struct {
 
 // collectHealthResults drains ch into a slice.
 func collectHealthResults(ch <-chan health.Result) []healthJSONResult {
-	var results []healthJSONResult
+	results := make([]healthJSONResult, 0)
 	for r := range ch {
 		results = append(results, healthJSONResult{
 			Section:  r.Section,
@@ -82,7 +82,7 @@ func runHealth(cmd *cobra.Command, target string) error {
 
 	ch := health.Run(ctx, awsCfg, inst)
 
-	if lsFlagFormat == "json" {
+	if flagFormat == "json" {
 		results := collectHealthResults(ch)
 		errors, warnings := 0, 0
 		for _, r := range results {

@@ -16,12 +16,10 @@ import (
 
 var (
 	lsFlagUnhealthy bool
-	lsFlagFormat    string
 )
 
 func init() {
 	rootCmd.Flags().BoolVar(&lsFlagUnhealthy, "unhealthy", false, "show only SSM-unreachable instances; requires --list")
-	rootCmd.Flags().StringVar(&lsFlagFormat, "format", "table", "output format: table, json, tsv; requires --list")
 }
 
 func runList(cmd *cobra.Command) error {
@@ -101,7 +99,7 @@ func runList(cmd *cobra.Command) error {
 		instances = filtered
 	}
 
-	return printInstances(instances, lsFlagFormat)
+	return printInstances(instances, flagFormat)
 }
 
 func printInstances(instances []awsclient.Instance, format string) error {
