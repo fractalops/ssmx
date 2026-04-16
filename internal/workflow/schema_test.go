@@ -241,6 +241,7 @@ func TestValidate_ParallelSubStep_NestedParallelRejected(t *testing.T) {
 			"outer": {
 				Parallel: map[string]*Step{
 					"inner": {
+						Shell: "echo inner",
 						Parallel: map[string]*Step{
 							"deep": {Shell: "echo deep"},
 						},
