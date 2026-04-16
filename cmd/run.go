@@ -57,11 +57,18 @@ func runWorkflowFleet(cmd *cobra.Command) error {
 			effectiveTags = append(effectiveTags, k+"="+v)
 		}
 	}
-	if len(effectiveTags) == 0 {
-		return fmt.Errorf("--run %q requires a target instance (e.g. ssmx web-prod --run %s) or --tag flag (workflow has no targets: block)", wf.Name, wf.Name)
+
+	// Resolve effective instance IDs (only used when no tags are set).
+	var effectiveInstanceIDs []string
+	if len(effectiveTags) == 0 && wf.Targets != nil {
+		effectiveInstanceIDs = wf.Targets.InstanceIDs
 	}
 
-	instances, err := resolveFleet(ctx, awsCfg, effectiveTags)
+	if len(effectiveTags) == 0 && len(effectiveInstanceIDs) == 0 {
+		return fmt.Errorf("--run %q requires a target instance (e.g. ssmx web-prod --run %s), --tag flag, or workflow targets: block", wf.Name, wf.Name)
+	}
+
+	instances, err := resolveFleet(ctx, awsCfg, effectiveTags, effectiveInstanceIDs)
 	if err != nil {
 		return err
 	}
@@ -88,14 +95,25 @@ func runWorkflowFleet(cmd *cobra.Command) error {
 	})
 }
 
-// resolveFleet returns SSM-online instances matching the given tag filters.
-// tags is a slice of "key=value" strings; all must match (ANDed).
-// Returns an error if zero online instances match.
-func resolveFleet(ctx context.Context, awsCfg aws.Config, tags []string) ([]awsclient.Instance, error) {
-	instances, err := awsclient.ListInstances(ctx, awsCfg, tags)
-	if err != nil {
-		return nil, fmt.Errorf("listing instances: %w", err)
+// resolveFleet returns SSM-online instances matching the given tag filters or
+// explicit instance IDs. Exactly one of tags or instanceIDs should be non-empty.
+func resolveFleet(ctx context.Context, awsCfg aws.Config, tags []string, instanceIDs []string) ([]awsclient.Instance, error) {
+	var (
+		instances []awsclient.Instance
+		err       error
+	)
+	if len(tags) > 0 {
+		instances, err = awsclient.ListInstances(ctx, awsCfg, tags)
+		if err != nil {
+			return nil, fmt.Errorf("listing instances: %w", err)
+		}
+	} else {
+		instances, err = awsclient.ListInstancesByIDs(ctx, awsCfg, instanceIDs)
+		if err != nil {
+			return nil, fmt.Errorf("listing instances by ID: %w", err)
+		}
 	}
+
 	ssmInfo, err := awsclient.ListManagedInstances(ctx, awsCfg)
 	if err != nil {
 		return nil, fmt.Errorf("fetching SSM info: %w", err)
@@ -109,7 +127,7 @@ func resolveFleet(ctx context.Context, awsCfg aws.Config, tags []string) ([]awsc
 		}
 	}
 	if len(online) == 0 {
-		return nil, fmt.Errorf("no SSM-online instances matched the given tags: %v", tags)
+		return nil, fmt.Errorf("no SSM-online instances matched the given filters")
 	}
 	return online, nil
 }
