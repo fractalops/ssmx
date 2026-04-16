@@ -246,6 +246,18 @@ func writeWorkflowInfo(w io.Writer, wf *workflow.Workflow) {
 		}
 	}
 
+	if len(wf.Outputs) > 0 {
+		fmt.Fprintln(w, "\noutputs:")
+		outKeys := make([]string, 0, len(wf.Outputs))
+		for k := range wf.Outputs {
+			outKeys = append(outKeys, k)
+		}
+		sort.Strings(outKeys)
+		for _, k := range outKeys {
+			fmt.Fprintf(w, "  %-20s  %s\n", k, wf.Outputs[k])
+		}
+	}
+
 	fmt.Fprintln(w, "\nsteps:")
 	levels, err := workflow.Levels(wf.Steps)
 	if err != nil {
@@ -255,14 +267,49 @@ func writeWorkflowInfo(w io.Writer, wf *workflow.Workflow) {
 		}
 		return
 	}
-	for _, level := range levels {
+	for li, level := range levels {
+		if len(levels) > 1 {
+			if len(level) == 1 {
+				fmt.Fprintf(w, "  level %d:\n", li+1)
+			} else {
+				fmt.Fprintf(w, "  level %d (parallel — %d steps):\n", li+1, len(level))
+			}
+		}
 		for _, stepName := range level {
 			step := wf.Steps[stepName]
+			var tags []string
+			if step.Always {
+				tags = append(tags, "always")
+			}
+			if step.Timeout != "" {
+				tags = append(tags, "timeout:"+step.Timeout)
+			}
+			if step.If != "" {
+				tags = append(tags, "if")
+			}
+			tagStr := ""
+			if len(tags) > 0 {
+				tagStr = " +" + strings.Join(tags, ",")
+			}
 			deps := ""
 			if len(step.Needs) > 0 {
 				deps = fmt.Sprintf("  (needs: %s)", strings.Join(step.Needs, ", "))
 			}
-			fmt.Fprintf(w, "  %-24s  [%s]%s\n", stepName, step.Kind(), deps)
+			indent := "  "
+			if len(levels) > 1 {
+				indent = "    "
+			}
+			fmt.Fprintf(w, "%s%-24s  [%s%s]%s\n", indent, stepName, step.Kind(), tagStr, deps)
+			if len(step.Outputs) > 0 {
+				outKeys := make([]string, 0, len(step.Outputs))
+				for k := range step.Outputs {
+					outKeys = append(outKeys, k)
+				}
+				sort.Strings(outKeys)
+				for _, k := range outKeys {
+					fmt.Fprintf(w, "%s  outputs.%-16s  %s\n", indent, k, step.Outputs[k])
+				}
+			}
 		}
 	}
 }
