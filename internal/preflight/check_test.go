@@ -29,6 +29,11 @@ func TestFormatConfigError(t *testing.T) {
 			contain: "aws sso login --profile sso-dev",
 		},
 		{
+			name:    "profile not found empty",
+			e:       &awsclient.ConfigError{Kind: awsclient.ConfigErrProfileNotFound, Profile: ""},
+			contain: "YOUR_PROFILE",
+		},
+		{
 			name:    "generic",
 			e:       &awsclient.ConfigError{Kind: awsclient.ConfigErrGeneric, Profile: ""},
 			contain: "AWS",

@@ -25,7 +25,7 @@ func formatConfigError(cfgErr *awsclient.ConfigError) string {
 	case awsclient.ConfigErrProfileNotFound:
 		profile := cfgErr.Profile
 		if profile == "" {
-			profile = cfgErr.Profile
+			profile = "YOUR_PROFILE"
 		}
 		return fmt.Sprintf("AWS profile %q not found — check ~/.aws/config or pass a different --profile", profile)
 	case awsclient.ConfigErrNoCredentials:
