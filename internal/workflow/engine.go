@@ -350,6 +350,8 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 			// Multi-step TTY level: stream output without spinner.
 			// w is already mutex-wrapped by runLevel so concurrent writes are safe.
 			progress = newProgressWriter(w, func() {})
+		} else {
+			progress = newLabeledWriter(w, name)
 		}
 	}
 

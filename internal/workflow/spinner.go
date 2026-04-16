@@ -120,3 +120,25 @@ func (pw *progressWriter) Write(b []byte) (int, error) {
 	}
 	return len(b), nil
 }
+
+// labeledWriter prefixes each line of step output with "  [name] " so that
+// non-TTY runs (CI/CD, piped output) produce identifiable per-step lines.
+type labeledWriter struct {
+	w    io.Writer
+	name string
+}
+
+func newLabeledWriter(w io.Writer, name string) *labeledWriter {
+	return &labeledWriter{w: w, name: name}
+}
+
+func (lw *labeledWriter) Write(b []byte) (int, error) {
+	content := strings.TrimRight(string(b), "\n")
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line != "" {
+			fmt.Fprintf(lw.w, "  [%s] %s\n", lw.name, line)
+		}
+	}
+	return len(b), nil
+}

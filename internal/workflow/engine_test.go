@@ -3,6 +3,7 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -34,7 +35,10 @@ func (m *mockShellRunner) sendDocCommand(_ context.Context, _, docName string, p
 	return m.commandID, m.sendErr
 }
 
-func (m *mockShellRunner) waitForShellCommand(_ context.Context, _, _ string, _ io.Writer) (string, string, int, error) {
+func (m *mockShellRunner) waitForShellCommand(_ context.Context, _, _ string, progress io.Writer) (string, string, int, error) {
+	if progress != nil && m.stdout != "" {
+		_, _ = fmt.Fprint(progress, m.stdout)
+	}
 	return m.stdout, m.stderr, m.exitCode, m.waitErr
 }
 
@@ -540,5 +544,34 @@ func TestEngine_SkipPropagatesThroughChain(t *testing.T) {
 	// Only step a should run; b and c should both be skipped.
 	if callCount != 1 {
 		t.Errorf("runner called %d times, want 1 (b and c should both be skipped)", callCount)
+	}
+}
+
+func TestRun_NonTTYLabeledOutput(t *testing.T) {
+	wf := &Workflow{
+		Name: "label-test",
+		Steps: map[string]*Step{
+			"myStep": {Shell: "echo labeled"},
+		},
+	}
+	runner := &mockShellRunner{stdout: "labeled output\n", exitCode: 0}
+	eng := &Engine{
+		instanceID: "i-test",
+		runner:     runner,
+		callStack:  []string{},
+		loader:     func(string) (*Workflow, error) { return nil, nil },
+	}
+	// bytes.Buffer is not a *os.File, so isTerminalWriter returns false → non-TTY path.
+	var buf bytes.Buffer
+	_, _, err := eng.Run(context.Background(), wf, RunOptions{Stderr: &buf})
+	if err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "[myStep]") {
+		t.Errorf("expected [myStep] prefix in non-TTY output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "labeled output") {
+		t.Errorf("expected streamed output content, got:\n%s", out)
 	}
 }
