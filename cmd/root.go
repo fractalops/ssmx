@@ -27,7 +27,7 @@ var (
 	flagFormat      string
 )
 
-// Workflow flags
+// Workflow flags.
 var (
 	flagRun              string
 	flagRunFile          string

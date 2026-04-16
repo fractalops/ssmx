@@ -36,7 +36,7 @@ func newProgressTracker(name string, total int64) *progressTracker {
 		total: total,
 		bar:   bar,
 		start: time.Now(),
-		isTTY: term.IsTerminal(int(os.Stderr.Fd())), //nolint:gosec // uintptr→int conversion safe for fd values
+		isTTY: term.IsTerminal(int(os.Stderr.Fd())),
 	}
 }
 

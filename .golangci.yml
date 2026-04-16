@@ -25,6 +25,14 @@ linters:
     rules:
       - linters: [wrapcheck]
         path: "cmd/.*\\.go"
+      # fmt.Fprintf to io.Writer status streams — errors are intentionally ignored
+      # because these are best-effort diagnostic writes (stderr/prefixWriter).
+      - linters: [errcheck]
+        text: "fmt\\.F(printf|println|print)f?"
+      # term.IsTerminal takes uintptr from os.File.Fd(); the conversion is safe
+      # and is the idiomatic pattern for this API.
+      - linters: [gosec]
+        text: "G115"
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

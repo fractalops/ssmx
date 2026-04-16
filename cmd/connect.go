@@ -150,7 +150,7 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	// Save terminal state before handing off to session-manager-plugin, which
 	// puts the terminal in raw mode. Restore it before showing the bookmark
 	// prompt so huh doesn't get garbled input.
-	termFd := int(os.Stdin.Fd()) //nolint:gosec // uintptr→int conversion is safe here: value is a small syscall return
+	termFd := int(os.Stdin.Fd())
 	oldState, err := term.GetState(termFd)
 	if err != nil {
 		oldState = nil

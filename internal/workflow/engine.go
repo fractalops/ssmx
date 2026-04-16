@@ -218,7 +218,7 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 	isTTY := isTerminalWriter(w)
 	useSpinner := isTTY && len(stepNames) == 1 && !opts.NoSpinner
 
-	stepW := io.Writer(w)
+	stepW := w
 	if isTTY && len(stepNames) > 1 {
 		stepW = &lockedWriter{w: w}
 	}
@@ -282,14 +282,10 @@ const maxFailedOutputLines = 50
 func printStepOutput(w io.Writer, stdout, stderr string) {
 	var lines []string
 	if stdout != "" {
-		for _, l := range strings.Split(strings.TrimRight(stdout, "\n"), "\n") {
-			lines = append(lines, l)
-		}
+		lines = append(lines, strings.Split(strings.TrimRight(stdout, "\n"), "\n")...)
 	}
 	if stderr != "" {
-		for _, l := range strings.Split(strings.TrimRight(stderr, "\n"), "\n") {
-			lines = append(lines, l)
-		}
+		lines = append(lines, strings.Split(strings.TrimRight(stderr, "\n"), "\n")...)
 	}
 	truncated := false
 	if len(lines) > maxFailedOutputLines {
@@ -308,7 +304,6 @@ func printStepOutput(w io.Writer, stdout, stderr string) {
 // isTTY reflects the original output writer (before any mutex wrapping).
 // useSpinner should only be true for single-step TTY levels.
 func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx ExprContext, failedSteps map[string]bool, opts RunOptions, w io.Writer, isTTY bool, useSpinner bool) (*StepResult, bool, error) {
-
 	// Skip if any dependency failed (unless always: true).
 	if !step.Always {
 		for _, dep := range step.Needs {

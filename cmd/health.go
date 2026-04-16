@@ -18,8 +18,8 @@ import (
 
 // healthJSON is the top-level JSON shape for --health --format json.
 type healthJSON struct {
-	Target  healthJSONTarget  `json:"target"`
-	Summary healthJSONSummary `json:"summary"`
+	Target  healthJSONTarget   `json:"target"`
+	Summary healthJSONSummary  `json:"summary"`
 	Results []healthJSONResult `json:"results"`
 }
 
@@ -82,7 +82,7 @@ func runHealth(cmd *cobra.Command, target string) error {
 		return nil // user cancelled picker
 	}
 
-	isTTY := term.IsTerminal(int(os.Stdout.Fd())) //nolint:gosec // uintptr→int conversion is safe here: value is a small syscall return
+	isTTY := term.IsTerminal(int(os.Stdout.Fd()))
 
 	ch := health.Run(ctx, awsCfg, inst)
 
