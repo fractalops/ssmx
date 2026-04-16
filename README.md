@@ -12,6 +12,7 @@ A utility that aims to simplify aws ssm operations and user experience
 
 - **Interactive TUI:** fuzzy-search instance picker
 - **exec:** Execute commands with standard io support
+- **Workflow engine:** Multi-step YAML automation with fleet targeting, parallel steps, SSM documents, and sub-workflow composition
 - **Bookmarking:** Save aliases instances you connect
 - **interactive setup:** Detect missing credentials, region, and Session Manager plugin; offers to install
 - **SSH config generation:** Easily Configure SSH over SSM
@@ -58,6 +59,9 @@ ssmx web-prod -L 8080:localhost:8080 # same, explicit form
 ssmx web-prod -L 5432:db.internal:5432  # tunnel through instance to a remote host
 
 ssmx web-prod --health               # read-only SSM connectivity diagnostics
+
+ssmx web-prod --run deploy           # run a workflow on a named instance
+ssmx --run deploy --tag env=prod     # run a workflow across a fleet of instances
 
 ssmx --configure                     # manage bookmarks, profile, region, SSH config
 ```
@@ -138,6 +142,174 @@ Writes entries to `~/.ssh/config.d/ssmx` so you can `ssh web-prod` directly thro
  ├── ssh_key      # ssh keys
  ├── ssh_key.pub 
  └── state.db     # sqlite: instance cache
+```
+
+## Workflow Engine
+
+Run multi-step automation workflows on instances over SSM — no agent, no open ports.
+
+### Running workflows
+
+```bash
+ssmx web-prod --run deploy               # run workflow on a named instance
+ssmx --run deploy --tag env=prod         # fleet mode: run on all tagged instances
+ssmx --run deploy --tag env=prod --concurrency 5  # limit to 5 concurrent instances
+ssmx web-prod --run deploy --input version=2.1.0  # pass inputs at runtime
+ssmx web-prod --run deploy --dry-run     # print steps without executing
+ssmx web-prod --run deploy --timeout 10m # hard wall-clock timeout
+```
+
+### Workflow files
+
+Place YAML workflow files in `.ssmx/workflows/` relative to where you run `ssmx`, or in `~/.ssmx/workflows/` for global workflows.
+
+```yaml
+name: deploy
+description: Deploy application to an instance
+version: "1.0.0"
+inputs:
+  version:
+    type: string
+    required: true
+    description: Version to deploy
+steps:
+  stop-app:
+    shell: systemctl stop app
+  deploy:
+    shell: |
+      aws s3 cp s3://releases/app-${{ inputs.version }}.tar.gz /tmp/
+      tar -xzf /tmp/app-${{ inputs.version }}.tar.gz -C /srv/app/
+    needs: [stop-app]
+  start-app:
+    shell: systemctl start app
+    needs: [deploy]
+outputs:
+  status: "${{ steps.start-app.stdout }}"
+```
+
+### Step kinds
+
+**`shell:`** — run a shell script on the instance
+
+```yaml
+steps:
+  check:
+    shell: |
+      echo "Running on ${{ target.instance_id }}"
+      uptime
+    env:
+      DEPLOY_ENV: "${{ inputs.env }}"
+    timeout: 5m
+    outputs:
+      uptime: "${{ stdout }}"
+```
+
+**`ssm-doc:`** — run an arbitrary SSM document
+
+```yaml
+steps:
+  patch:
+    ssm-doc: AWS-RunPatchBaseline
+    params:
+      Operation: Install
+      RebootOption: RebootIfNeeded
+    outputs:
+      summary: "${{ stdout }}"
+
+  install-agent:
+    ssm-doc: install          # expands via doc_aliases in ~/.ssmx/config.yaml
+    params:
+      action: install
+      name: AmazonCloudWatchAgent
+```
+
+**`workflow:`** — call another workflow as a sub-step
+
+```yaml
+steps:
+  bootstrap:
+    workflow: install-deps
+    with:
+      env: "${{ inputs.env }}"
+  deploy:
+    shell: ./deploy.sh
+    needs: [bootstrap]
+```
+
+**`parallel:`** — run sub-steps concurrently (all run regardless of sibling failure)
+
+```yaml
+steps:
+  fetch-assets:
+    parallel:
+      fetch-kernel:
+        shell: curl -fsSL ${{ inputs.kernel_url }} -o /tmp/vmlinux
+      fetch-rootfs:
+        shell: curl -fsSL ${{ inputs.rootfs_url }} -o /tmp/rootfs.squashfs
+      install-agent:
+        ssm-doc: AWS-ConfigureAWSPackage
+        params:
+          action: install
+          name: AmazonCloudWatchAgent
+```
+
+### Step options
+
+| Field | Description |
+|---|---|
+| `needs:` | List of step names that must complete first |
+| `if:` | Expression — skip step if falsy (`${{ inputs.flag }}`) |
+| `always:` | Run even if a dependency failed (useful for cleanup) |
+| `timeout:` | Per-step timeout (e.g. `30s`, `5m`) |
+| `env:` | Environment variables (expressions supported) |
+| `outputs:` | Capture step results for downstream steps |
+| `on-failure:` | Call a cleanup workflow if this step fails (`workflow: steps` only) |
+
+### Fleet targeting
+
+Workflows can declare default targets. `--tag` always takes priority over `targets:`.
+
+```yaml
+# By EC2 tags
+targets:
+  tags:
+    env: prod
+    role: web
+  max-concurrency: 3   # 0 = unlimited
+
+# By explicit instance IDs
+targets:
+  instance-ids:
+    - i-0abc123def456
+    - i-0xyz789abc012
+  max-concurrency: 2
+```
+
+### Expressions
+
+Steps support `${{ }}` expressions:
+
+| Expression | Value |
+|---|---|
+| `${{ inputs.name }}` | Workflow input |
+| `${{ steps.NAME.stdout }}` | Stdout of a previous step |
+| `${{ steps.NAME.exitCode }}` | Exit code of a previous step |
+| `${{ steps.NAME.success }}` | Boolean success of a previous step |
+| `${{ steps.NAME.outputs.KEY }}` | Named output of a previous step |
+| `${{ target.instance_id }}` | Current instance ID |
+| `${{ env.VAR }}` | Workflow-level env variable |
+| `${{ stdout }}` | Current step stdout (in `outputs:` block only) |
+| `${{ exitCode }}` | Current step exit code (in `outputs:` block only) |
+
+### Doc aliases
+
+Define short names for SSM documents in `~/.ssmx/config.yaml`:
+
+```yaml
+doc_aliases:
+  patch: AWS-RunPatchBaseline
+  install: AWS-ConfigureAWSPackage
+  run-script: AWS-RunShellScript
 ```
 
 ## Contributing
