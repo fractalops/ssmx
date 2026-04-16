@@ -17,11 +17,19 @@ type mockShellRunner struct {
 	waitErr          error
 	capturedCommands []string
 	capturedEnv      map[string]string
+	capturedDocName  string
+	capturedDocParams map[string]string
 }
 
 func (m *mockShellRunner) sendShellCommand(_ context.Context, _ string, commands []string, env map[string]string, _ int32) (string, error) {
 	m.capturedCommands = commands
 	m.capturedEnv = env
+	return m.commandID, m.sendErr
+}
+
+func (m *mockShellRunner) sendDocCommand(_ context.Context, _, docName string, params map[string]string) (string, error) {
+	m.capturedDocName = docName
+	m.capturedDocParams = params
 	return m.commandID, m.sendErr
 }
 
@@ -134,6 +142,10 @@ type countingShellRunner struct {
 }
 
 func (r *countingShellRunner) sendShellCommand(_ context.Context, _ string, _ []string, _ map[string]string, _ int32) (string, error) {
+	return "cmd-x", nil
+}
+
+func (r *countingShellRunner) sendDocCommand(_ context.Context, _, _ string, _ map[string]string) (string, error) {
 	return "cmd-x", nil
 }
 
