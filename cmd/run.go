@@ -27,14 +27,17 @@ type dryRunPlan struct {
 }
 
 type dryRunStep struct {
-	Name    string   `json:"name"`
-	Kind    string   `json:"kind"`
-	Level   int      `json:"level"`
-	Needs   []string `json:"needs,omitempty"`
-	Always  bool     `json:"always,omitempty"`
-	If      string   `json:"if,omitempty"`
-	Timeout string   `json:"timeout,omitempty"`
-	Preview string   `json:"preview,omitempty"`
+	Name      string            `json:"name"`
+	Kind      string            `json:"kind"`
+	Level     int               `json:"level"`
+	Needs     []string          `json:"needs,omitempty"`
+	Always    bool              `json:"always,omitempty"`
+	If        string            `json:"if,omitempty"`
+	Timeout   string            `json:"timeout,omitempty"`
+	Preview   string            `json:"preview,omitempty"`
+	Doc       string            `json:"doc,omitempty"`
+	DocAlias  string            `json:"doc_alias,omitempty"`
+	DocParams map[string]string `json:"doc_params,omitempty"`
 }
 
 // formatRunSummaryJSON marshals a RunSummary to indented JSON.
@@ -47,7 +50,7 @@ func formatRunSummaryJSON(s *workflow.RunSummary) (string, error) {
 }
 
 // buildDryRunPlan resolves inputs and builds a machine-readable execution plan.
-func buildDryRunPlan(wf *workflow.Workflow, rawInputs map[string]string) (*dryRunPlan, error) {
+func buildDryRunPlan(wf *workflow.Workflow, rawInputs map[string]string, docAliases map[string]string) (*dryRunPlan, error) {
 	inputs, err := wf.ApplyInputs(rawInputs)
 	if err != nil {
 		return nil, err
@@ -72,12 +75,7 @@ func buildDryRunPlan(wf *workflow.Workflow, rawInputs map[string]string) (*dryRu
 	for li, level := range levels {
 		for _, name := range level {
 			step := wf.Steps[name]
-			script := step.Shell
-			if step.Workflow != "" {
-				script = step.Workflow
-			}
-			preview, _ := workflow.Resolve(script, exprCtx)
-			steps = append(steps, dryRunStep{
+			ds := dryRunStep{
 				Name:    name,
 				Kind:    step.Kind(),
 				Level:   li + 1,
@@ -85,8 +83,30 @@ func buildDryRunPlan(wf *workflow.Workflow, rawInputs map[string]string) (*dryRu
 				Always:  step.Always,
 				If:      step.If,
 				Timeout: step.Timeout,
-				Preview: preview,
-			})
+			}
+			if step.SSMDoc != "" {
+				resolvedDoc := step.SSMDoc
+				if alias, ok := docAliases[step.SSMDoc]; ok {
+					ds.DocAlias = step.SSMDoc
+					resolvedDoc = alias
+				}
+				ds.Doc = resolvedDoc
+				if len(step.Params) > 0 {
+					ds.DocParams = make(map[string]string, len(step.Params))
+					for k, v := range step.Params {
+						resolved, _ := workflow.Resolve(v, exprCtx)
+						ds.DocParams[k] = resolved
+					}
+				}
+				ds.Preview = resolvedDoc
+			} else {
+				script := step.Shell
+				if step.Workflow != "" {
+					script = step.Workflow
+				}
+				ds.Preview, _ = workflow.Resolve(script, exprCtx)
+			}
+			steps = append(steps, ds)
 		}
 	}
 
@@ -204,7 +224,8 @@ func runWorkflowFleet(_ *cobra.Command) error {
 	}
 
 	if flagDryRun && flagFormat == formatJSON {
-		plan, err := buildDryRunPlan(wf, params)
+		aliases := mergeDocAliases(cfg)
+		plan, err := buildDryRunPlan(wf, params, aliases)
 		if err != nil {
 			return err
 		}
@@ -330,7 +351,8 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 	}
 
 	if flagDryRun && flagFormat == formatJSON {
-		plan, err := buildDryRunPlan(wf, params)
+		aliases := mergeDocAliases(cfg)
+		plan, err := buildDryRunPlan(wf, params, aliases)
 		if err != nil {
 			return err
 		}

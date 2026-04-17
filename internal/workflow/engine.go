@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 
@@ -327,12 +328,32 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 	}
 
 	if opts.DryRun {
-		script := step.Shell
-		if step.Workflow != "" {
-			script = step.Workflow
+		if step.SSMDoc != "" {
+			resolvedDoc := step.SSMDoc
+			aliasNote := ""
+			if alias, ok := e.docAliases[step.SSMDoc]; ok {
+				resolvedDoc = alias
+				aliasNote = fmt.Sprintf(" (alias %q → %q)", step.SSMDoc, resolvedDoc)
+			}
+			paramParts := make([]string, 0, len(step.Params))
+			for k, v := range step.Params {
+				rv, _ := Resolve(v, exprCtx)
+				paramParts = append(paramParts, k+"="+rv)
+			}
+			sort.Strings(paramParts)
+			paramsStr := ""
+			if len(paramParts) > 0 {
+				paramsStr = " [" + strings.Join(paramParts, ", ") + "]"
+			}
+			fmt.Fprintf(w, "  %s  %s  [dry-run] ssm-doc: %s%s%s\n", ansi(isTTY, ansiDim, "·"), name, resolvedDoc, aliasNote, paramsStr)
+		} else {
+			script := step.Shell
+			if step.Workflow != "" {
+				script = step.Workflow
+			}
+			resolved, _ := Resolve(script, exprCtx)
+			fmt.Fprintf(w, "  %s  %s  [dry-run] %s: %s\n", ansi(isTTY, ansiDim, "·"), name, step.Kind(), resolved)
 		}
-		resolved, _ := Resolve(script, exprCtx)
-		fmt.Fprintf(w, "  %s  %s  [dry-run] %s: %s\n", ansi(isTTY, ansiDim, "·"), name, step.Kind(), resolved)
 		return &StepResult{Success: true}, false, nil
 	}
 

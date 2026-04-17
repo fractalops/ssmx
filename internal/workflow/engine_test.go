@@ -656,3 +656,61 @@ func TestRun_NonTTYLabeledOutput(t *testing.T) {
 		t.Errorf("expected streamed output content, got:\n%s", out)
 	}
 }
+
+func TestRunStep_DryRun_SSMDoc_ShowsResolvedDoc(t *testing.T) {
+	runner := &mockShellRunner{}
+	e := &Engine{
+		instanceID: "i-0abc",
+		runner:     runner,
+		docAliases: map[string]string{"patch": "AWS-PatchInstanceWithRollback"},
+		callStack:  []string{},
+		loader:     Load,
+	}
+	wf := &Workflow{
+		Name: "patch",
+		Steps: map[string]*Step{
+			"do-patch": {
+				SSMDoc: "patch",
+				Params: map[string]string{"Operation": "Install"},
+			},
+		},
+	}
+	var buf bytes.Buffer
+	_, _, err := e.Run(context.Background(), wf, RunOptions{DryRun: true, Stderr: &buf, NoSpinner: true})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "AWS-PatchInstanceWithRollback") {
+		t.Errorf("expected resolved doc name in dry-run output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Operation=Install") {
+		t.Errorf("expected params in dry-run output, got:\n%s", out)
+	}
+}
+
+func TestRunStep_DryRun_SSMDoc_NoAlias_ShowsDocName(t *testing.T) {
+	runner := &mockShellRunner{}
+	e := &Engine{
+		instanceID: "i-0abc",
+		runner:     runner,
+		docAliases: map[string]string{},
+		callStack:  []string{},
+		loader:     Load,
+	}
+	wf := &Workflow{
+		Name: "patch",
+		Steps: map[string]*Step{
+			"do-patch": {SSMDoc: "AWS-RunPatchBaseline"},
+		},
+	}
+	var buf bytes.Buffer
+	_, _, err := e.Run(context.Background(), wf, RunOptions{DryRun: true, Stderr: &buf, NoSpinner: true})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "AWS-RunPatchBaseline") {
+		t.Errorf("expected doc name in dry-run output, got:\n%s", out)
+	}
+}

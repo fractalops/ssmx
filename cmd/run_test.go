@@ -178,7 +178,7 @@ func TestBuildDryRunPlan_IncludesAlwaysTrueWarnings(t *testing.T) {
 			"deploy": {Shell: "echo deploy", Needs: []string{"debug"}},
 		},
 	}
-	plan, err := buildDryRunPlan(wf, nil)
+	plan, err := buildDryRunPlan(wf, nil, map[string]string{})
 	if err != nil {
 		t.Fatalf("buildDryRunPlan: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestBuildDryRunPlan_Basic(t *testing.T) {
 			"deploy":  {Shell: "echo deploying", Needs: []string{"prepare"}},
 		},
 	}
-	plan, err := buildDryRunPlan(wf, map[string]string{"env": "prod"})
+	plan, err := buildDryRunPlan(wf, map[string]string{"env": "prod"}, map[string]string{})
 	if err != nil {
 		t.Fatalf("buildDryRunPlan error: %v", err)
 	}
@@ -414,5 +414,53 @@ func TestLoadActiveWorkflow_RunFileNotFound(t *testing.T) {
 	_, err := loadActiveWorkflow()
 	if err == nil {
 		t.Error("expected error for non-existent --run-file path")
+	}
+}
+
+func TestBuildDryRunPlan_SSMDocStep_IncludesDocFields(t *testing.T) {
+	wf := &workflow.Workflow{
+		Name: "patch",
+		Steps: map[string]*workflow.Step{
+			"do-patch": {
+				SSMDoc: "AWS-RunPatchBaseline",
+				Params: map[string]string{"Operation": "Install"},
+			},
+		},
+	}
+	aliases := map[string]string{}
+	plan, err := buildDryRunPlan(wf, nil, aliases)
+	if err != nil {
+		t.Fatalf("buildDryRunPlan: %v", err)
+	}
+	if len(plan.Steps) != 1 {
+		t.Fatalf("expected 1 step, got %d", len(plan.Steps))
+	}
+	step := plan.Steps[0]
+	if step.Doc != "AWS-RunPatchBaseline" {
+		t.Errorf("Doc = %q, want AWS-RunPatchBaseline", step.Doc)
+	}
+	if step.DocParams["Operation"] != "Install" {
+		t.Errorf("DocParams[Operation] = %q, want Install", step.DocParams["Operation"])
+	}
+}
+
+func TestBuildDryRunPlan_SSMDocAlias_IncludesAliasField(t *testing.T) {
+	wf := &workflow.Workflow{
+		Name: "patch",
+		Steps: map[string]*workflow.Step{
+			"do-patch": {SSMDoc: "patch"},
+		},
+	}
+	aliases := map[string]string{"patch": "AWS-PatchInstanceWithRollback"}
+	plan, err := buildDryRunPlan(wf, nil, aliases)
+	if err != nil {
+		t.Fatalf("buildDryRunPlan: %v", err)
+	}
+	step := plan.Steps[0]
+	if step.Doc != "AWS-PatchInstanceWithRollback" {
+		t.Errorf("Doc = %q, want AWS-PatchInstanceWithRollback", step.Doc)
+	}
+	if step.DocAlias != "patch" {
+		t.Errorf("DocAlias = %q, want patch", step.DocAlias)
 	}
 }
