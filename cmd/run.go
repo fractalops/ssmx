@@ -120,14 +120,32 @@ func buildDryRunPlan(wf *workflow.Workflow, rawInputs map[string]string, docAlia
 	}, nil
 }
 
-// loadActiveWorkflow returns the workflow specified by --run-file (explicit
-// path) or --run (discovered by name). Callers do not need to know which flag
-// was set.
-func loadActiveWorkflow() (*workflow.Workflow, error) {
-	if flagRunFile != "" {
-		return workflow.LoadFile(flagRunFile)
+// parseParams converts the --param flag values into a key→value map.
+func parseParams() (map[string]string, error) {
+	params := make(map[string]string, len(flagParams))
+	for _, p := range flagParams {
+		parts := strings.SplitN(p, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid --param %q (expected key=value)", p)
+		}
+		params[parts[0]] = parts[1]
 	}
-	return workflow.Load(flagRun)
+	return params, nil
+}
+
+// resolveWorkflowSource resolves the active workflow and its source metadata.
+// For doc: sources, docParams are baked into the synthesized step; callers must
+// NOT also pass them as RunOptions.Inputs (the synthesized workflow has no
+// declared inputs).
+func resolveWorkflowSource(docParams map[string]string) (*workflow.Workflow, *workflow.SourceMeta, error) {
+	return workflow.ResolveWorkflow(flagRun, flagRunFile, docParams)
+}
+
+// loadActiveWorkflow returns the workflow specified by --run or --run-file.
+// Deprecated: use resolveWorkflowSource for call-sites that need SourceMeta.
+func loadActiveWorkflow() (*workflow.Workflow, error) {
+	wf, _, err := workflow.ResolveWorkflow(flagRun, flagRunFile, nil)
+	return wf, err
 }
 
 // runWorkflowInfoFromFile loads a workflow from an explicit file path and
@@ -176,7 +194,12 @@ func runWorkflowFleet(_ *cobra.Command) error {
 		return err
 	}
 
-	wf, err := loadActiveWorkflow()
+	params, err := parseParams()
+	if err != nil {
+		return err
+	}
+
+	wf, sourceMeta, err := resolveWorkflowSource(params)
 	if err != nil {
 		return err
 	}
@@ -200,7 +223,11 @@ func runWorkflowFleet(_ *cobra.Command) error {
 		if flagRunFile != "" {
 			flag, example = "--run-file", flagRunFile
 		}
-		return fmt.Errorf("workflow %q requires a target instance (e.g. ssmx web-prod %s %s), --tag flag, or workflow targets: block", wf.Name, flag, example)
+		paramSnippet := ""
+		for _, p := range flagParams {
+			paramSnippet += " --param " + p
+		}
+		return fmt.Errorf("workflow %q requires a target instance (e.g. ssmx web-prod %s %s%s), --tag flag, or workflow targets: block", wf.Name, flag, example, paramSnippet)
 	}
 
 	instances, err := resolveFleet(ctx, awsCfg, effectiveTags, effectiveInstanceIDs)
@@ -214,18 +241,13 @@ func runWorkflowFleet(_ *cobra.Command) error {
 		concurrency = wf.Targets.MaxConcurrency
 	}
 
-	params := make(map[string]string, len(flagParams))
-	for _, p := range flagParams {
-		parts := strings.SplitN(p, "=", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid --param %q (expected key=value)", p)
-		}
-		params[parts[0]] = parts[1]
-	}
-
 	if flagDryRun && flagFormat == formatJSON {
 		aliases := mergeDocAliases(cfg)
-		plan, err := buildDryRunPlan(wf, params, aliases)
+		dryInputs := params
+		if sourceMeta.Kind == workflow.SourceKindDoc {
+			dryInputs = nil
+		}
+		plan, err := buildDryRunPlan(wf, dryInputs, aliases)
 		if err != nil {
 			return err
 		}
@@ -244,8 +266,10 @@ func runWorkflowFleet(_ *cobra.Command) error {
 	}
 
 	runOpts := workflow.RunOptions{
-		Inputs: params,
 		DryRun: flagDryRun,
+	}
+	if sourceMeta.Kind != workflow.SourceKindDoc {
+		runOpts.Inputs = params
 	}
 	if flagFormat == formatJSON {
 		// Suppress human-readable prefixed streaming so stdout contains only JSON.
@@ -328,6 +352,16 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 		return err
 	}
 
+	params, err := parseParams()
+	if err != nil {
+		return err
+	}
+
+	wf, sourceMeta, err := resolveWorkflowSource(params)
+	if err != nil {
+		return err
+	}
+
 	inst, err := resolveTarget(ctx, cmd, awsCfg, cfg, target)
 	if err != nil {
 		return err
@@ -336,23 +370,13 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 		return nil // user cancelled picker
 	}
 
-	wf, err := loadActiveWorkflow()
-	if err != nil {
-		return err
-	}
-
-	params := make(map[string]string, len(flagParams))
-	for _, p := range flagParams {
-		parts := strings.SplitN(p, "=", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid --param %q (expected key=value)", p)
-		}
-		params[parts[0]] = parts[1]
-	}
-
 	if flagDryRun && flagFormat == formatJSON {
 		aliases := mergeDocAliases(cfg)
-		plan, err := buildDryRunPlan(wf, params, aliases)
+		dryInputs := params
+		if sourceMeta.Kind == workflow.SourceKindDoc {
+			dryInputs = nil
+		}
+		plan, err := buildDryRunPlan(wf, dryInputs, aliases)
 		if err != nil {
 			return err
 		}
@@ -371,8 +395,10 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 	}
 
 	runOpts := workflow.RunOptions{
-		Inputs: params,
 		DryRun: flagDryRun,
+	}
+	if sourceMeta.Kind != workflow.SourceKindDoc {
+		runOpts.Inputs = params
 	}
 	if flagFormat == formatJSON {
 		// Suppress human-readable step output so stdout stays machine-readable.

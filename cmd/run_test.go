@@ -464,3 +464,51 @@ func TestBuildDryRunPlan_SSMDocAlias_IncludesAliasField(t *testing.T) {
 		t.Errorf("DocAlias = %q, want patch", step.DocAlias)
 	}
 }
+
+func TestResolveWorkflowSource_DocRef_SynthesizesWorkflow(t *testing.T) {
+	old1, old2 := flagRun, flagRunFile
+	defer func() { flagRun, flagRunFile = old1, old2 }()
+	flagRun = "doc:AWS-RunPatchBaseline"
+	flagRunFile = ""
+
+	wf, meta, err := resolveWorkflowSource(nil)
+	if err != nil {
+		t.Fatalf("resolveWorkflowSource: %v", err)
+	}
+	if meta.Kind != workflow.SourceKindDoc {
+		t.Errorf("Kind = %q, want SourceKindDoc", meta.Kind)
+	}
+	step, ok := wf.Steps["run-doc"]
+	if !ok {
+		t.Fatal("expected 'run-doc' step in synthesized workflow")
+	}
+	if step.SSMDoc != "AWS-RunPatchBaseline" {
+		t.Errorf("SSMDoc = %q, want AWS-RunPatchBaseline", step.SSMDoc)
+	}
+}
+
+func TestParseParams_Valid(t *testing.T) {
+	old := flagParams
+	defer func() { flagParams = old }()
+	flagParams = []string{"key=val", "foo=bar"}
+	params, err := parseParams()
+	if err != nil {
+		t.Fatalf("parseParams: %v", err)
+	}
+	if params["key"] != "val" {
+		t.Errorf("key = %q, want val", params["key"])
+	}
+	if params["foo"] != "bar" {
+		t.Errorf("foo = %q, want bar", params["foo"])
+	}
+}
+
+func TestParseParams_InvalidFormat(t *testing.T) {
+	old := flagParams
+	defer func() { flagParams = old }()
+	flagParams = []string{"noequalssign"}
+	_, err := parseParams()
+	if err == nil {
+		t.Error("expected error for param without '='")
+	}
+}
