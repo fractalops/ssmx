@@ -35,6 +35,8 @@ type StepResult struct {
 	Success  bool
 	Skipped  bool
 	Outputs  map[string]string
+	DocName  string // resolved SSM document name (ssm-doc steps only)
+	DocAlias string // alias used, if any (ssm-doc steps only)
 }
 
 var exprRe = regexp.MustCompile(`\$\{\{\s*([^}]+?)\s*\}\}`)

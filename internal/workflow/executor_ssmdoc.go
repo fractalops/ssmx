@@ -17,6 +17,10 @@ func runSSMDocStep(ctx context.Context, e *Engine, step *Step, name string, expr
 	if alias, ok := e.docAliases[docName]; ok {
 		docName = alias
 	}
+	docAlias := ""
+	if _, ok := e.docAliases[step.SSMDoc]; ok {
+		docAlias = step.SSMDoc
+	}
 
 	// Resolve expressions in params values.
 	resolvedParams := make(map[string]string, len(step.Params))
@@ -53,6 +57,8 @@ func runSSMDocStep(ctx context.Context, e *Engine, step *Step, name string, expr
 		Stderr:   stderr,
 		ExitCode: exitCode,
 		Success:  exitCode == 0,
+		DocName:  docName,
+		DocAlias: docAlias,
 	}
 
 	if len(step.Outputs) > 0 {

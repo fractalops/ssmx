@@ -164,12 +164,14 @@ func (e *Engine) Run(ctx context.Context, wf *Workflow, opts RunOptions) (map[st
 				continue
 			}
 			summary.Steps = append(summary.Steps, StepSummary{
-				Name:    name,
-				Success: sr.Success,
-				Skipped: sr.Skipped,
-				Exit:    sr.ExitCode,
-				Stdout:  sr.Stdout,
-				Stderr:  sr.Stderr,
+				Name:     name,
+				Success:  sr.Success,
+				Skipped:  sr.Skipped,
+				Exit:     sr.ExitCode,
+				Stdout:   sr.Stdout,
+				Stderr:   sr.Stderr,
+				DocName:  sr.DocName,
+				DocAlias: sr.DocAlias,
 			})
 		}
 	}
@@ -269,7 +271,15 @@ func (e *Engine) runLevel(ctx context.Context, wf *Workflow, stepNames []string,
 				// let them mask the original error that triggered cleanup.
 				fmt.Fprintf(w, "  %s  %s  cleanup failed (exit code %d)\n", ansi(isTTY, ansiYellow, "!"), o.name, o.result.ExitCode)
 			} else if firstErr == nil {
-				firstErr = fmt.Errorf("step %q failed (exit code %d)", o.name, o.result.ExitCode)
+				if o.result.DocName != "" {
+					docInfo := o.result.DocName
+					if o.result.DocAlias != "" {
+						docInfo = fmt.Sprintf("%q → %q", o.result.DocAlias, o.result.DocName)
+					}
+					firstErr = fmt.Errorf("step %q failed (exit code %d, doc: %s)", o.name, o.result.ExitCode, docInfo)
+				} else {
+					firstErr = fmt.Errorf("step %q failed (exit code %d)", o.name, o.result.ExitCode)
+				}
 			}
 		}
 	}
@@ -423,7 +433,15 @@ func (e *Engine) runStep(ctx context.Context, step *Step, name string, exprCtx E
 		if result.Success {
 			fmt.Fprintf(w, "  %s  %s\n", ansi(isTTY, ansiGreen, "✓"), name)
 		} else {
-			fmt.Fprintf(w, "  %s  %s  exit code %d\n", ansi(isTTY, ansiRed, "✗"), name, result.ExitCode)
+			docInfo := ""
+			if result.DocName != "" {
+				if result.DocAlias != "" {
+					docInfo = fmt.Sprintf("  [doc: %s → %s]", result.DocAlias, result.DocName)
+				} else {
+					docInfo = fmt.Sprintf("  [doc: %s]", result.DocName)
+				}
+			}
+			fmt.Fprintf(w, "  %s  %s  exit code %d%s\n", ansi(isTTY, ansiRed, "✗"), name, result.ExitCode, docInfo)
 			printStepOutput(w, result.Stdout, result.Stderr)
 		}
 		return result, false, nil

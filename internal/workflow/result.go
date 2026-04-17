@@ -12,12 +12,14 @@ type RunSummary struct {
 
 // StepSummary captures the outcome of a single step execution.
 type StepSummary struct {
-	Name    string `json:"name"`
-	Success bool   `json:"success"`
-	Skipped bool   `json:"skipped"`
-	Exit    int    `json:"exit_code,omitempty"`
-	Stdout  string `json:"stdout,omitempty"`
-	Stderr  string `json:"stderr,omitempty"`
+	Name     string `json:"name"`
+	Success  bool   `json:"success"`
+	Skipped  bool   `json:"skipped"`
+	Exit     int    `json:"exit_code,omitempty"`
+	Stdout   string `json:"stdout,omitempty"`
+	Stderr   string `json:"stderr,omitempty"`
+	DocName  string `json:"doc,omitempty"`
+	DocAlias string `json:"doc_alias,omitempty"`
 }
 
 // FleetRunSummary captures the aggregate outcome of a fleet workflow execution.

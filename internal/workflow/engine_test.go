@@ -714,3 +714,29 @@ func TestRunStep_DryRun_SSMDoc_NoAlias_ShowsDocName(t *testing.T) {
 		t.Errorf("expected doc name in dry-run output, got:\n%s", out)
 	}
 }
+
+func TestRunStep_SSMDocFailure_ShowsDocIdentity(t *testing.T) {
+	runner := &mockShellRunner{commandID: "cmd-1", exitCode: 1}
+	e := &Engine{
+		instanceID: "i-0abc",
+		runner:     runner,
+		docAliases: map[string]string{"patch": "AWS-PatchInstanceWithRollback"},
+		callStack:  []string{},
+		loader:     Load,
+	}
+	wf := &Workflow{
+		Name: "patch",
+		Steps: map[string]*Step{
+			"do-patch": {SSMDoc: "patch"},
+		},
+	}
+	var buf bytes.Buffer
+	_, _, err := e.Run(context.Background(), wf, RunOptions{Stderr: &buf, NoSpinner: true})
+	if err == nil {
+		t.Fatal("expected error for non-zero exit")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "AWS-PatchInstanceWithRollback") {
+		t.Errorf("expected resolved doc name in failure output, got:\n%s", out)
+	}
+}

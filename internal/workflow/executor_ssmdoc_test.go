@@ -107,3 +107,45 @@ func TestRunSSMDocStep_NonZeroExitIsNotError(t *testing.T) {
 		t.Errorf("exitCode = %d, want 1", result.ExitCode)
 	}
 }
+
+func TestRunSSMDocStep_ResultHasDocName(t *testing.T) {
+	runner := &mockShellRunner{commandID: "cmd-1", exitCode: 0}
+	e := &Engine{
+		instanceID: "i-0abc",
+		runner:     runner,
+		docAliases: map[string]string{},
+	}
+	step := &Step{SSMDoc: "AWS-RunPatchBaseline"}
+	var buf bytes.Buffer
+	result, err := runSSMDocStep(context.Background(), e, step, "patch", ExprContext{}, &buf)
+	if err != nil {
+		t.Fatalf("runSSMDocStep: %v", err)
+	}
+	if result.DocName != "AWS-RunPatchBaseline" {
+		t.Errorf("DocName = %q, want AWS-RunPatchBaseline", result.DocName)
+	}
+	if result.DocAlias != "" {
+		t.Errorf("DocAlias should be empty for non-alias doc, got %q", result.DocAlias)
+	}
+}
+
+func TestRunSSMDocStep_ResultHasDocAlias(t *testing.T) {
+	runner := &mockShellRunner{commandID: "cmd-1", exitCode: 0}
+	e := &Engine{
+		instanceID: "i-0abc",
+		runner:     runner,
+		docAliases: map[string]string{"patch": "AWS-PatchInstanceWithRollback"},
+	}
+	step := &Step{SSMDoc: "patch"}
+	var buf bytes.Buffer
+	result, err := runSSMDocStep(context.Background(), e, step, "do-patch", ExprContext{}, &buf)
+	if err != nil {
+		t.Fatalf("runSSMDocStep: %v", err)
+	}
+	if result.DocName != "AWS-PatchInstanceWithRollback" {
+		t.Errorf("DocName = %q, want AWS-PatchInstanceWithRollback", result.DocName)
+	}
+	if result.DocAlias != "patch" {
+		t.Errorf("DocAlias = %q, want patch", result.DocAlias)
+	}
+}
