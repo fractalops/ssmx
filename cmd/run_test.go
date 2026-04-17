@@ -22,7 +22,7 @@ func TestWriteWorkflowInfo_Outputs(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	writeWorkflowInfo(&buf, wf)
+	writeWorkflowInfo(&buf, wf, map[string]string{})
 	out := buf.String()
 	if !strings.Contains(out, "outputs:") {
 		t.Errorf("expected 'outputs:' section, got:\n%s", out)
@@ -41,7 +41,7 @@ func TestWriteWorkflowInfo_AlwaysAndTimeout(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	writeWorkflowInfo(&buf, wf)
+	writeWorkflowInfo(&buf, wf, map[string]string{})
 	out := buf.String()
 	if !strings.Contains(out, "always") {
 		t.Errorf("expected 'always' tag, got:\n%s", out)
@@ -202,13 +202,54 @@ func TestWriteWorkflowInfo_ShowsAlwaysTrueWarning(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	writeWorkflowInfo(&buf, wf)
+	writeWorkflowInfo(&buf, wf, map[string]string{})
 	out := buf.String()
 	if !strings.Contains(out, "warnings:") {
 		t.Errorf("expected 'warnings:' section in workflow info, got:\n%s", out)
 	}
 	if !strings.Contains(out, `"deploy"`) {
 		t.Errorf("expected 'deploy' mentioned in warning, got:\n%s", out)
+	}
+}
+
+func TestWriteWorkflowInfo_SSMDocStep_ShowsDocAndParams(t *testing.T) {
+	wf := &workflow.Workflow{
+		Name: "patch",
+		Steps: map[string]*workflow.Step{
+			"do-patch": {
+				SSMDoc: "AWS-RunPatchBaseline",
+				Params: map[string]string{"Operation": "Install"},
+			},
+		},
+	}
+	aliases := map[string]string{}
+	var buf bytes.Buffer
+	writeWorkflowInfo(&buf, wf, aliases)
+	out := buf.String()
+	if !strings.Contains(out, "AWS-RunPatchBaseline") {
+		t.Errorf("expected doc name in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Operation=Install") {
+		t.Errorf("expected params in output, got:\n%s", out)
+	}
+}
+
+func TestWriteWorkflowInfo_SSMDocStep_ShowsAliasExpansion(t *testing.T) {
+	wf := &workflow.Workflow{
+		Name: "patch",
+		Steps: map[string]*workflow.Step{
+			"do-patch": {SSMDoc: "patch"},
+		},
+	}
+	aliases := map[string]string{"patch": "AWS-PatchInstanceWithRollback"}
+	var buf bytes.Buffer
+	writeWorkflowInfo(&buf, wf, aliases)
+	out := buf.String()
+	if !strings.Contains(out, "AWS-PatchInstanceWithRollback") {
+		t.Errorf("expected resolved alias target in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "patch") {
+		t.Errorf("expected alias name in output, got:\n%s", out)
 	}
 }
 

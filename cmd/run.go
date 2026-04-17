@@ -117,7 +117,9 @@ func runWorkflowInfoFromFile(path string) error {
 	if err != nil {
 		return err
 	}
-	writeWorkflowInfo(os.Stdout, wf)
+	cfg, _ := config.Load()
+	aliases := mergeDocAliases(cfg)
+	writeWorkflowInfo(os.Stdout, wf, aliases)
 	return nil
 }
 
@@ -389,11 +391,29 @@ func runWorkflowInfo(name string) error {
 	if err != nil {
 		return err
 	}
-	writeWorkflowInfo(os.Stdout, wf)
+	cfg, _ := config.Load()
+	aliases := mergeDocAliases(cfg)
+	writeWorkflowInfo(os.Stdout, wf, aliases)
 	return nil
 }
 
-func writeWorkflowInfo(w io.Writer, wf *workflow.Workflow) {
+// mergeDocAliases returns a defensive copy of the effective doc aliases.
+// config.Load uses Viper which already merges DefaultDocAliases as defaults,
+// so cfg.DocAliases contains defaults plus any user overrides when present.
+// Falls back to DefaultDocAliases when cfg is nil or has no aliases set.
+func mergeDocAliases(cfg *config.Config) map[string]string {
+	src := config.DefaultDocAliases
+	if cfg != nil && cfg.DocAliases != nil {
+		src = cfg.DocAliases
+	}
+	merged := make(map[string]string, len(src))
+	for k, v := range src {
+		merged[k] = v
+	}
+	return merged
+}
+
+func writeWorkflowInfo(w io.Writer, wf *workflow.Workflow, docAliases map[string]string) {
 	fmt.Fprintf(w, "workflow: %s\n", wf.Name)
 	if wf.Description != "" {
 		fmt.Fprintf(w, "description: %s\n", wf.Description)
@@ -484,6 +504,27 @@ func writeWorkflowInfo(w io.Writer, wf *workflow.Workflow) {
 				indent = "    "
 			}
 			fmt.Fprintf(w, "%s%-24s  [%s%s]%s\n", indent, stepName, step.Kind(), tagStr, deps)
+			if step.SSMDoc != "" {
+				resolvedDoc := step.SSMDoc
+				if alias, ok := docAliases[step.SSMDoc]; ok {
+					resolvedDoc = alias
+					fmt.Fprintf(w, "%s  doc: %s → %s\n", indent, step.SSMDoc, resolvedDoc)
+				} else {
+					fmt.Fprintf(w, "%s  doc: %s\n", indent, resolvedDoc)
+				}
+				if len(step.Params) > 0 {
+					paramKeys := make([]string, 0, len(step.Params))
+					for k := range step.Params {
+						paramKeys = append(paramKeys, k)
+					}
+					sort.Strings(paramKeys)
+					parts := make([]string, 0, len(paramKeys))
+					for _, k := range paramKeys {
+						parts = append(parts, k+"="+step.Params[k])
+					}
+					fmt.Fprintf(w, "%s  params: %s\n", indent, strings.Join(parts, ", "))
+				}
+			}
 			if len(step.Outputs) > 0 {
 				outKeys := make([]string, 0, len(step.Outputs))
 				for k := range step.Outputs {
