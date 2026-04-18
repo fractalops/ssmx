@@ -90,7 +90,7 @@ func runList(cmd *cobra.Command) error {
 				AvailabilityZone: inst.AvailabilityZone,
 			})
 		}
-		_ = state.UpsertInstances(ctx, db, toCache)
+		_ = state.UpsertInstances(ctx, db, profile, region, toCache)
 	}
 
 	if lsFlagUnhealthy {

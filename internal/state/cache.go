@@ -61,40 +61,52 @@ func GetCachedInstances(ctx context.Context, db *sql.DB, profile, region string)
 	return instances, nil
 }
 
-// UpsertInstances replaces the cached instance list for a profile+region.
-func UpsertInstances(ctx context.Context, db *sql.DB, instances []CachedInstance) error {
+// UpsertInstances replaces the cached instance list for the given profile+region.
+// All existing rows for that profile+region are removed before inserting the new
+// batch, so instances that have disappeared from AWS are not left in the cache.
+func UpsertInstances(ctx context.Context, db *sql.DB, profile, region string, instances []CachedInstance) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("beginning upsert transaction: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO instance_cache
-			(instance_id, name, state, ssm_status, private_ip, agent_version,
-			 region, profile, cached_at, platform_name, availability_zone)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(instance_id) DO UPDATE SET
-			name=excluded.name, state=excluded.state, ssm_status=excluded.ssm_status,
-			private_ip=excluded.private_ip, agent_version=excluded.agent_version,
-			region=excluded.region, profile=excluded.profile, cached_at=excluded.cached_at,
-			platform_name=excluded.platform_name, availability_zone=excluded.availability_zone
-	`)
-	if err != nil {
-		return fmt.Errorf("preparing upsert statement: %w", err)
+	// Remove stale rows before inserting the fresh batch.
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM instance_cache WHERE profile = ? AND region = ?`, profile, region,
+	); err != nil {
+		return fmt.Errorf("clearing stale cache for %s/%s: %w", profile, region, err)
 	}
-	defer func() { _ = stmt.Close() }()
 
-	now := time.Now().Unix()
-	for _, inst := range instances {
-		if _, err := stmt.ExecContext(ctx,
-			inst.InstanceID, inst.Name, inst.State, inst.SSMStatus,
-			inst.PrivateIP, inst.AgentVersion, inst.Region, inst.Profile,
-			now, inst.PlatformName, inst.AvailabilityZone,
-		); err != nil {
-			return fmt.Errorf("upserting instance %s: %w", inst.InstanceID, err)
+	if len(instances) > 0 {
+		stmt, err := tx.PrepareContext(ctx, `
+			INSERT INTO instance_cache
+				(instance_id, name, state, ssm_status, private_ip, agent_version,
+				 region, profile, cached_at, platform_name, availability_zone)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(instance_id, profile, region) DO UPDATE SET
+				name=excluded.name, state=excluded.state, ssm_status=excluded.ssm_status,
+				private_ip=excluded.private_ip, agent_version=excluded.agent_version,
+				cached_at=excluded.cached_at,
+				platform_name=excluded.platform_name, availability_zone=excluded.availability_zone
+		`)
+		if err != nil {
+			return fmt.Errorf("preparing upsert statement: %w", err)
+		}
+		defer func() { _ = stmt.Close() }()
+
+		now := time.Now().Unix()
+		for _, inst := range instances {
+			if _, err := stmt.ExecContext(ctx,
+				inst.InstanceID, inst.Name, inst.State, inst.SSMStatus,
+				inst.PrivateIP, inst.AgentVersion, inst.Region, inst.Profile,
+				now, inst.PlatformName, inst.AvailabilityZone,
+			); err != nil {
+				return fmt.Errorf("upserting instance %s: %w", inst.InstanceID, err)
+			}
 		}
 	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("committing upsert transaction: %w", err)
 	}
