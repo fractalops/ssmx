@@ -381,9 +381,9 @@ func TestParseRootArgs_WorkflowInfoFile(t *testing.T) {
 	}
 }
 
-// ── loadActiveWorkflow ───────────────────────────────────────────────────────
+// ── resolveWorkflowSource (file path) ────────────────────────────────────────
 
-func TestLoadActiveWorkflow_UsesRunFile(t *testing.T) {
+func TestResolveWorkflowSource_UsesRunFile(t *testing.T) {
 	f, err := os.CreateTemp(t.TempDir(), "*.yaml")
 	if err != nil {
 		t.Fatal(err)
@@ -396,22 +396,22 @@ func TestLoadActiveWorkflow_UsesRunFile(t *testing.T) {
 	flagRun = ""
 	flagRunFile = f.Name()
 
-	wf, err := loadActiveWorkflow()
+	wf, _, err := resolveWorkflowSource(nil)
 	if err != nil {
-		t.Fatalf("loadActiveWorkflow: %v", err)
+		t.Fatalf("resolveWorkflowSource: %v", err)
 	}
 	if wf.Name != "file-deploy" {
 		t.Errorf("Name = %q, want file-deploy", wf.Name)
 	}
 }
 
-func TestLoadActiveWorkflow_RunFileNotFound(t *testing.T) {
+func TestResolveWorkflowSource_RunFileNotFound(t *testing.T) {
 	old1, old2 := flagRun, flagRunFile
 	defer func() { flagRun, flagRunFile = old1, old2 }()
 	flagRun = ""
 	flagRunFile = "/nonexistent/deploy.yaml"
 
-	_, err := loadActiveWorkflow()
+	_, _, err := resolveWorkflowSource(nil)
 	if err == nil {
 		t.Error("expected error for non-existent --run-file path")
 	}

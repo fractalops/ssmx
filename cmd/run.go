@@ -141,13 +141,6 @@ func resolveWorkflowSource(docParams map[string]string) (*workflow.Workflow, *wo
 	return workflow.ResolveWorkflow(flagRun, flagRunFile, docParams)
 }
 
-// loadActiveWorkflow returns the workflow specified by --run or --run-file.
-// Deprecated: use resolveWorkflowSource for call-sites that need SourceMeta.
-func loadActiveWorkflow() (*workflow.Workflow, error) {
-	wf, _, err := workflow.ResolveWorkflow(flagRun, flagRunFile, nil)
-	return wf, err
-}
-
 // runWorkflowInfoFromFile loads a workflow from an explicit file path and
 // writes its human-readable info to stdout.
 func runWorkflowInfoFromFile(path string) error {
@@ -161,84 +154,49 @@ func runWorkflowInfoFromFile(path string) error {
 	return nil
 }
 
-// runWorkflowFleet resolves a fleet of target instances and runs the workflow
-// against all of them concurrently. Fleet sources, in priority order:
-//  1. --tag flags (override workflow targets:)
-//  2. workflow targets: block
+// workflowRunSetup holds the shared state resolved by setupWorkflowRun.
+type workflowRunSetup struct {
+	awsCfg     aws.Config
+	region     string
+	profile    string
+	cfg        *config.Config
+	params     map[string]string
+	wf         *workflow.Workflow
+	sourceMeta *workflow.SourceMeta
+	runOpts    workflow.RunOptions
+}
+
+// setupWorkflowRun performs the common pre-flight shared by runWorkflow and
+// runWorkflowFleet: format validation, AWS config, config loading, param
+// parsing, workflow resolution, dry-run JSON output, dry-run warnings, and
+// RunOptions construction.
 //
-// A positional instance arg always routes to runWorkflow instead (single-instance).
-func runWorkflowFleet(_ *cobra.Command) error {
+// When handled is true, the dry-run JSON plan has already been written to
+// stdout and the caller must return nil immediately.
+func setupWorkflowRun(ctx context.Context) (*workflowRunSetup, bool, error) {
 	if err := validateFormat("table", formatJSON); err != nil {
-		return err
+		return nil, false, err
 	}
-
-	ctx := context.Background()
-	if flagTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, flagTimeout)
-		defer cancel()
-	}
-
 	awsCfg, err := awsclient.NewConfig(ctx, flagProfile, flagRegion)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 	region := awsCfg.Region
 	profile := flagProfile
 	if profile == "" {
 		profile = defaultProfile
 	}
-
 	cfg, err := config.Load()
 	if err != nil {
-		return err
+		return nil, false, err
 	}
-
 	params, err := parseParams()
 	if err != nil {
-		return err
+		return nil, false, err
 	}
-
 	wf, sourceMeta, err := resolveWorkflowSource(params)
 	if err != nil {
-		return err
-	}
-
-	// Resolve effective tags: --tag wins over workflow targets: block.
-	effectiveTags := flagTags
-	if len(effectiveTags) == 0 && wf.Targets != nil {
-		for k, v := range wf.Targets.Tags {
-			effectiveTags = append(effectiveTags, k+"="+v)
-		}
-	}
-
-	// Resolve effective instance IDs (only used when no tags are set).
-	var effectiveInstanceIDs []string
-	if len(effectiveTags) == 0 && wf.Targets != nil {
-		effectiveInstanceIDs = wf.Targets.InstanceIDs
-	}
-
-	if len(effectiveTags) == 0 && len(effectiveInstanceIDs) == 0 {
-		flag, example := "--run", wf.Name
-		if flagRunFile != "" {
-			flag, example = "--run-file", flagRunFile
-		}
-		paramSnippet := ""
-		for _, p := range flagParams {
-			paramSnippet += " --param " + p
-		}
-		return fmt.Errorf("workflow %q requires a target instance (e.g. ssmx web-prod %s %s%s), --tag flag, or workflow targets: block", wf.Name, flag, example, paramSnippet)
-	}
-
-	instances, err := resolveFleet(ctx, awsCfg, effectiveTags, effectiveInstanceIDs)
-	if err != nil {
-		return err
-	}
-
-	// Resolve concurrency: --concurrency wins over targets.max-concurrency.
-	concurrency := flagConcurrency
-	if concurrency == 0 && wf.Targets != nil {
-		concurrency = wf.Targets.MaxConcurrency
+		return nil, false, err
 	}
 
 	if flagDryRun && flagFormat == formatJSON {
@@ -249,14 +207,14 @@ func runWorkflowFleet(_ *cobra.Command) error {
 		}
 		plan, err := buildDryRunPlan(wf, dryInputs, aliases)
 		if err != nil {
-			return err
+			return nil, false, err
 		}
 		b, err := json.MarshalIndent(plan, "", "  ")
 		if err != nil {
-			return err
+			return nil, false, err
 		}
 		fmt.Println(string(b))
-		return nil
+		return nil, true, nil
 	}
 
 	if flagDryRun {
@@ -265,19 +223,82 @@ func runWorkflowFleet(_ *cobra.Command) error {
 		}
 	}
 
-	runOpts := workflow.RunOptions{
-		DryRun: flagDryRun,
-	}
+	runOpts := workflow.RunOptions{DryRun: flagDryRun}
 	if sourceMeta.Kind != workflow.SourceKindDoc {
 		runOpts.Inputs = params
 	}
 	if flagFormat == formatJSON {
-		// Suppress human-readable prefixed streaming so stdout contains only JSON.
 		runOpts.Stderr = io.Discard
 	}
 
-	fe := workflow.NewFleetEngineWithConfig(awsCfg, instances, concurrency, region, profile, cfg.DocAliases)
-	fleetSummary, err := fe.Run(ctx, wf, runOpts)
+	return &workflowRunSetup{
+		awsCfg: awsCfg, region: region, profile: profile,
+		cfg: cfg, params: params, wf: wf, sourceMeta: sourceMeta,
+		runOpts: runOpts,
+	}, false, nil
+}
+
+// runWorkflowFleet resolves a fleet of target instances and runs the workflow
+// against all of them concurrently. Fleet sources, in priority order:
+//  1. --tag flags (override workflow targets:)
+//  2. workflow targets: block
+//
+// A positional instance arg always routes to runWorkflow instead (single-instance).
+func runWorkflowFleet(_ *cobra.Command) error {
+	ctx := context.Background()
+	if flagTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, flagTimeout)
+		defer cancel()
+	}
+
+	setup, handled, err := setupWorkflowRun(ctx)
+	if err != nil {
+		return err
+	}
+	if handled {
+		return nil
+	}
+
+	// Resolve effective tags: --tag wins over workflow targets: block.
+	effectiveTags := flagTags
+	if len(effectiveTags) == 0 && setup.wf.Targets != nil {
+		for k, v := range setup.wf.Targets.Tags {
+			effectiveTags = append(effectiveTags, k+"="+v)
+		}
+	}
+
+	// Resolve effective instance IDs (only used when no tags are set).
+	var effectiveInstanceIDs []string
+	if len(effectiveTags) == 0 && setup.wf.Targets != nil {
+		effectiveInstanceIDs = setup.wf.Targets.InstanceIDs
+	}
+
+	if len(effectiveTags) == 0 && len(effectiveInstanceIDs) == 0 {
+		flag, example := "--run", setup.wf.Name
+		if flagRunFile != "" {
+			flag, example = "--run-file", flagRunFile
+		}
+		paramSnippet := ""
+		for _, p := range flagParams {
+			paramSnippet += " --param " + p
+		}
+		return fmt.Errorf("workflow %q requires a target instance (e.g. ssmx web-prod %s %s%s), --tag flag, or workflow targets: block", setup.wf.Name, flag, example, paramSnippet)
+	}
+
+	instances, err := resolveFleet(ctx, setup.awsCfg, effectiveTags, effectiveInstanceIDs)
+	if err != nil {
+		return err
+	}
+
+	// Resolve concurrency: --concurrency wins over targets.max-concurrency.
+	concurrency := flagConcurrency
+	if concurrency == 0 && setup.wf.Targets != nil {
+		concurrency = setup.wf.Targets.MaxConcurrency
+	}
+
+	fe := workflow.NewFleetEngineWithConfig(setup.awsCfg, instances, concurrency, setup.region, setup.profile, setup.cfg.DocAliases)
+	fleetSummary, err := fe.Run(ctx, setup.wf, setup.runOpts)
 	if flagFormat == formatJSON && fleetSummary != nil {
 		b, jsonErr := json.MarshalIndent(fleetSummary, "", "  ")
 		if jsonErr != nil {
@@ -326,10 +347,6 @@ func resolveFleet(ctx context.Context, awsCfg aws.Config, tags []string, instanc
 }
 
 func runWorkflow(cmd *cobra.Command, target string) error {
-	if err := validateFormat("table", formatJSON); err != nil {
-		return err
-	}
-
 	ctx := context.Background()
 	if flagTimeout > 0 {
 		var cancel context.CancelFunc
@@ -337,32 +354,15 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 		defer cancel()
 	}
 
-	awsCfg, err := awsclient.NewConfig(ctx, flagProfile, flagRegion)
+	setup, handled, err := setupWorkflowRun(ctx)
 	if err != nil {
 		return err
 	}
-	region := awsCfg.Region
-	profile := flagProfile
-	if profile == "" {
-		profile = defaultProfile
+	if handled {
+		return nil
 	}
 
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-
-	params, err := parseParams()
-	if err != nil {
-		return err
-	}
-
-	wf, sourceMeta, err := resolveWorkflowSource(params)
-	if err != nil {
-		return err
-	}
-
-	inst, err := resolveTarget(ctx, cmd, awsCfg, cfg, target)
+	inst, err := resolveTarget(ctx, cmd, setup.awsCfg, setup.cfg, target)
 	if err != nil {
 		return err
 	}
@@ -370,45 +370,9 @@ func runWorkflow(cmd *cobra.Command, target string) error {
 		return nil // user cancelled picker
 	}
 
-	if flagDryRun && flagFormat == formatJSON {
-		aliases := mergeDocAliases(cfg)
-		dryInputs := params
-		if sourceMeta.Kind == workflow.SourceKindDoc {
-			dryInputs = nil
-		}
-		plan, err := buildDryRunPlan(wf, dryInputs, aliases)
-		if err != nil {
-			return err
-		}
-		b, err := json.MarshalIndent(plan, "", "  ")
-		if err != nil {
-			return err
-		}
-		fmt.Println(string(b))
-		return nil
-	}
-
-	if flagDryRun {
-		for _, warn := range workflow.AlwaysTrueWarnings(wf.Steps) {
-			fmt.Fprintf(os.Stderr, "  warning: %s\n", warn)
-		}
-	}
-
-	runOpts := workflow.RunOptions{
-		DryRun: flagDryRun,
-	}
-	if sourceMeta.Kind != workflow.SourceKindDoc {
-		runOpts.Inputs = params
-	}
-	if flagFormat == formatJSON {
-		// Suppress human-readable step output so stdout stays machine-readable.
-		// Failure details are preserved in RunSummary, not in the status stream.
-		runOpts.Stderr = io.Discard
-	}
-
-	engine := workflow.New(awsCfg, inst.InstanceID, inst.Name, inst.PrivateIP, region, profile, cfg.DocAliases)
+	engine := workflow.New(setup.awsCfg, inst.InstanceID, inst.Name, inst.PrivateIP, setup.region, setup.profile, setup.cfg.DocAliases)
 	var summary *workflow.RunSummary
-	_, summary, err = engine.Run(ctx, wf, runOpts)
+	_, summary, err = engine.Run(ctx, setup.wf, setup.runOpts)
 	if flagFormat == formatJSON && summary != nil {
 		out, jsonErr := formatRunSummaryJSON(summary)
 		if jsonErr != nil {
