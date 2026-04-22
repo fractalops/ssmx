@@ -151,6 +151,7 @@ ssmcp web-prod:/var/log/app.log ./
 ssmcp -r ./dist/ web-prod:/srv/app/
 ssmcp -r web-prod:/etc/nginx/ ./nginx-backup/
 ssmcp --profile staging --region us-west-2 ./script.sh web-staging:/tmp/
+ssmcp --user ubuntu web-prod:/var/log/app.log ./
 ```
 
 `ssmcp` uses the same target resolution as `ssmx` and tunnels `sftp` over an SSM-backed SSH session.
@@ -256,6 +257,8 @@ ssmx web-prod --run deploy --timeout 10m           # hard wall-clock timeout
 cat deploy.yaml | ssmx web-prod --run -            # load a workflow from stdin
 ssmx web-prod --run-file /path/to/deploy.yaml      # load a workflow from an explicit file path
 ssmx --run-file /path/to/deploy.yaml --tag env=prod # --run-file works in fleet mode too
+ssmx web-prod --run doc:AWS-RunPatchBaseline       # run a single SSM document as a one-step workflow
+ssmx web-prod --run doc:AWS-RunPatchBaseline --param Operation=Install  # with parameters
 ```
 
 ### Workflow files
@@ -400,10 +403,13 @@ Steps support `${{ }}` expressions:
 |---|---|
 | `${{ inputs.name }}` | Workflow input |
 | `${{ steps.NAME.stdout }}` | Stdout of a previous step |
+| `${{ steps.NAME.stderr }}` | Stderr of a previous step |
 | `${{ steps.NAME.exitCode }}` | Exit code of a previous step |
 | `${{ steps.NAME.success }}` | Boolean success of a previous step |
 | `${{ steps.NAME.outputs.KEY }}` | Named output of a previous step |
 | `${{ target.instance_id }}` | Current instance ID |
+| `${{ target.name }}` | Instance Name tag |
+| `${{ target.private_ip }}` | Instance private IP address |
 | `${{ env.VAR }}` | Workflow-level env variable |
 | `${{ stdout }}` | Current step stdout, in `outputs:` only |
 | `${{ exitCode }}` | Current step exit code, in `outputs:` only |
